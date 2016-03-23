@@ -27,7 +27,7 @@ public:
     uint256 hashMerkleRoot;
     uint32_t nTime;
     uint32_t nCreatorId;
-    std::vector< std::vector<unsigned char> > vSignatures;
+    std::vector<CSignedCVNVote> vVotes;
 
     CBlockHeader()
     {
@@ -44,7 +44,7 @@ public:
         READWRITE(hashMerkleRoot);
         READWRITE(nTime);
         READWRITE(nCreatorId);
-        READWRITE(vSignatures);
+        READWRITE(vVotes);
     }
 
     void SetNull()
@@ -54,7 +54,7 @@ public:
         hashMerkleRoot.SetNull();
         nTime = 0;
         nCreatorId = 0;
-        vSignatures.clear();
+        vVotes.clear();
     }
 
     bool IsNull() const
@@ -114,7 +114,7 @@ public:
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
         block.nCreatorId     = nCreatorId;
-        block.vSignatures    = vSignatures;
+        block.vVotes         = vVotes;
         return block;
     }
 

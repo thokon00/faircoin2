@@ -410,7 +410,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
             if(!key.SignCompact(pblock->GetHash(), vchBlockSig))
             	printf("error signing block\n");
 
-            pblock->vSignatures.push_back(vchBlockSig);
+            pblock->vVotes.push_back(vchBlockSig);
             // test signing END
 
             LogPrintf("Running CertifiedValidationNode with %u transactions in block (%u bytes)\n", pblock->vtx.size(),
@@ -429,7 +429,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
                 {
                 	// Found a solution
 					SetThreadPriority(THREAD_PRIORITY_NORMAL);
-					LogPrintf("CertifiedValidationNode (%d/%d):\n", cnt - 1, ((cnt-1) % 5));
+					LogPrintf("CertifiedValidationNode:\n");
 					cnt = 0;
 					LogPrintf("creating next block\n  hash: %s  \nnodeid: %u\n", pblock->GetHash().ToString(), pblock->nCreatorId);
 					ProcessBlockFound(pblock, chainparams);

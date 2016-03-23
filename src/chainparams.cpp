@@ -8,6 +8,7 @@
 
 #include "tinyformat.h"
 #include "util.h"
+#include "vote.h"
 #include "utilstrencodings.h"
 
 #include <assert.h>
@@ -34,7 +35,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
     genesis.vtx.push_back(txNew);
     genesis.hashPrevBlock.SetNull();
     genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
-    genesis.vSignatures.resize(1);
+    genesis.vVotes.resize(1);
     return genesis;
 }
 
@@ -93,9 +94,11 @@ public:
 
         genesis = CreateGenesisBlock(1458643274, 0, 1, 50 * COIN);
 
-        int dummySig[] = {0x87, 0x12, 0x88, 0x13};
-        std::vector<unsigned char> vDummySig(dummySig, dummySig + 4);
-        genesis.vSignatures.push_back(vDummySig); // dummy signature
+        CKey key;
+        CCVNVote vote(0, 0, 0);
+        CSignedCVNVote signedVote = vote.GetSignedVote(key);
+
+        genesis.vVotes.push_back(signedVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("main: %s\n", consensus.hashGenesisBlock.ToString().c_str());
@@ -157,7 +160,7 @@ public:
 
         int dummySig[] = {0x77, 0x02, 0x98, 0x23};
         std::vector<unsigned char> vDummySig(dummySig, dummySig + 4);
-        genesis.vSignatures.push_back(vDummySig); // dummy signature
+        genesis.vVotes.push_back(vDummySig); // dummy signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("test: %s\n", consensus.hashGenesisBlock.ToString().c_str());
@@ -221,7 +224,7 @@ public:
 
         int dummySig[] = {0x77, 0x02, 0x98, 0x23};
         std::vector<unsigned char> vDummySig(dummySig, dummySig + 4);
-        genesis.vSignatures.push_back(vDummySig); // dummy signature
+        genesis.vVotes.push_back(vDummySig); // dummy signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("reg: %s\n", consensus.hashGenesisBlock.ToString().c_str());

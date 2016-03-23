@@ -4,6 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "primitives/block.h"
+#include "primitives/vote.h"
 
 #include "hash.h"
 #include "tinyformat.h"
@@ -23,7 +24,7 @@ std::string CBlock::ToString() const
         nVersion,
         hashPrevBlock.ToString(),
         hashMerkleRoot.ToString(),
-        nTime, nCreatorId, vSignatures.size(),
+        nTime, nCreatorId, vVotes.size(),
         vtx.size());
     for (unsigned int i = 0; i < vtx.size(); i++)
     {
