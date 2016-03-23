@@ -1393,7 +1393,7 @@ arith_uint256 GetBlockProof(const CBlockIndex& block)
 {
     arith_uint256 bnSignatures;
 
-    bnSignatures = block.vSignatures.size();
+    bnSignatures = block.vVotes.size();
 
     return bnSignatures;
 }

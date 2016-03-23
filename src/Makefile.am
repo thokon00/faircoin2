@@ -126,6 +126,7 @@ BITCOIN_CORE_H = \
   prevector.h \
   primitives/block.h \
   primitives/transaction.h \
+  primitives/vote.h \
   protocol.h \
   pubkey.h \
   random.h \
@@ -277,6 +278,7 @@ libbitcoin_common_a_SOURCES = \
   netbase.cpp \
   primitives/block.cpp \
   primitives/transaction.cpp \
+  primitives/vote.cpp \
   protocol.cpp \
   pubkey.cpp \
   scheduler.cpp \

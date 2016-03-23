@@ -8,8 +8,8 @@
 
 #include "tinyformat.h"
 #include "util.h"
-#include "vote.h"
 #include "utilstrencodings.h"
+#include "key.h"
 
 #include <assert.h>
 
@@ -17,6 +17,8 @@
 
 #include "chainparamsseeds.h"
 #include <stdio.h>
+
+extern CKey GetTMPKey();
 
 static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nNonce, int32_t nVersion, const CAmount& genesisReward)
 {
@@ -94,14 +96,16 @@ public:
 
         genesis = CreateGenesisBlock(1458643274, 0, 1, 50 * COIN);
 
-        CKey key;
-        CCVNVote vote(0, 0, 0);
-        CSignedCVNVote signedVote = vote.GetSignedVote(key);
+        CKey key = GetTMPKey();
+        CSignedCVNVote signedGenesisVote(0xc001d00d, 0xc001d00d, 0);
+        if(!key.SignCompact(signedGenesisVote.GetHash(), signedGenesisVote.vSignature))
+        	printf("error signing genesisVote\n");
 
-        genesis.vVotes.push_back(signedVote); // genesis vote
+        genesis.vVotes.push_back(signedGenesisVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("main: %s\n", consensus.hashGenesisBlock.ToString().c_str());
+        printf("genesis block main net:\n%s\n", genesis.ToString().c_str());
         assert(consensus.hashGenesisBlock == uint256S("0x2a25f2fee4a266917e7f7cdd6615d82970dcd9fef375d259c51cc81a32c71554"));
         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
@@ -158,9 +162,12 @@ public:
 
         genesis = CreateGenesisBlock(1458643274, 0, 1, 50 * COIN);
 
-        int dummySig[] = {0x77, 0x02, 0x98, 0x23};
-        std::vector<unsigned char> vDummySig(dummySig, dummySig + 4);
-        genesis.vVotes.push_back(vDummySig); // dummy signature
+        CKey key = GetTMPKey();
+        CSignedCVNVote signedGenesisVote(0xc001d00d, 0xc001d00d, 0);
+        if(!key.SignCompact(signedGenesisVote.GetHash(), signedGenesisVote.vSignature))
+        	printf("error signing genesisVote\n");
+
+        genesis.vVotes.push_back(signedGenesisVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("test: %s\n", consensus.hashGenesisBlock.ToString().c_str());
@@ -222,9 +229,12 @@ public:
 
         genesis = CreateGenesisBlock(1458643274, 0, 1, 50 * COIN);
 
-        int dummySig[] = {0x77, 0x02, 0x98, 0x23};
-        std::vector<unsigned char> vDummySig(dummySig, dummySig + 4);
-        genesis.vVotes.push_back(vDummySig); // dummy signature
+        CKey key = GetTMPKey();
+        CSignedCVNVote signedGenesisVote(0xc001d00d, 0xc001d00d, 0);
+        if(!key.SignCompact(signedGenesisVote.GetHash(), signedGenesisVote.vSignature))
+        	printf("error signing genesisVote\n");
+
+        genesis.vVotes.push_back(signedGenesisVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("reg: %s\n", consensus.hashGenesisBlock.ToString().c_str());

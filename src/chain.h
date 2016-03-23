@@ -143,7 +143,7 @@ public:
     uint256 hashMerkleRoot;
     unsigned int nTime;
     unsigned int nCreatorId;
-    std::vector< std::vector<unsigned char> > vSignatures;
+    std::vector<CSignedCVNVote> vVotes;
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     uint32_t nSequenceId;
@@ -167,7 +167,7 @@ public:
         hashMerkleRoot = uint256();
         nTime          = 0;
         nCreatorId     = 0;
-        vSignatures.clear();
+        vVotes.clear();
     }
 
     CBlockIndex()
@@ -183,7 +183,7 @@ public:
         hashMerkleRoot = block.hashMerkleRoot;
         nTime          = block.nTime;
         nCreatorId     = block.nCreatorId;
-        vSignatures    = block.vSignatures;
+        vVotes         = block.vVotes;
     }
 
     CDiskBlockPos GetBlockPos() const {
@@ -213,7 +213,7 @@ public:
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
         block.nCreatorId     = nCreatorId;
-        block.vSignatures    = vSignatures;
+        block.vVotes         = vVotes;
         return block;
     }
 
@@ -245,8 +245,8 @@ public:
 
     std::string ToString() const
     {
-        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, merkle=%s, hashBlock=%s)",
-            pprev, nHeight,
+        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, merkle=%s, hashBlock=%s, creatorId=%u)",
+            pprev, nHeight, nCreatorId,
             hashMerkleRoot.ToString(),
             GetBlockHash().ToString());
     }
@@ -319,7 +319,7 @@ public:
         READWRITE(hashMerkleRoot);
         READWRITE(nTime);
         READWRITE(nCreatorId);
-        READWRITE(vSignatures);
+        READWRITE(vVotes);
     }
 
     uint256 GetBlockHash() const
@@ -330,7 +330,7 @@ public:
         block.hashMerkleRoot  = hashMerkleRoot;
         block.nTime           = nTime;
         block.nCreatorId      = nCreatorId;
-        block.vSignatures     = vSignatures;
+        block.vVotes          = vVotes;
         return block.GetHash();
     }
 

@@ -44,7 +44,7 @@ UniValue blockheaderToJSON(const CBlockIndex* blockindex)
     result.push_back(Pair("time", (int64_t)blockindex->nTime));
     result.push_back(Pair("mediantime", (int64_t)blockindex->GetMedianTimePast()));
     result.push_back(Pair("creator", (uint64_t)blockindex->nCreatorId));
-    result.push_back(Pair("signatures", (uint64_t)blockindex->vSignatures.size()));
+    result.push_back(Pair("votes", (uint64_t)blockindex->vVotes.size()));
 
     if (blockindex->pprev)
         result.push_back(Pair("previousblockhash", blockindex->pprev->GetBlockHash().GetHex()));
@@ -83,7 +83,7 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
     result.push_back(Pair("time", block.GetBlockTime()));
     result.push_back(Pair("mediantime", (int64_t)blockindex->GetMedianTimePast()));
     result.push_back(Pair("creator", (uint64_t)blockindex->nCreatorId));
-    result.push_back(Pair("signatures", (uint64_t)blockindex->vSignatures.size()));
+    result.push_back(Pair("votes", (uint64_t)blockindex->vVotes.size()));
 
     if (blockindex->pprev)
         result.push_back(Pair("previousblockhash", blockindex->pprev->GetBlockHash().GetHex()));

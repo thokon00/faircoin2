@@ -32,6 +32,21 @@
 #include <boost/tuple/tuple.hpp>
 #include <queue>
 
+CKey GetTMPKey()
+{
+	boost::shared_ptr<CReserveKey> rKey(new CReserveKey(pwalletMain));
+    CPubKey pubkey;
+    if (!rKey->GetReservedKey(pubkey))
+    	printf("error could not get pubkey\n");
+
+    CKey key;
+
+    if (!pwalletMain->GetKey(pubkey.GetID(), key))
+    	printf("error could not get key\n");
+
+    return key;
+}
+
 using namespace std;
 
 //////////////////////////////////////////////////////////////////////////////
@@ -337,21 +352,6 @@ static bool ProcessBlockFound(const CBlock* pblock, const CChainParams& chainpar
     return true;
 }
 
-CKey GetTMPKey()
-{
-	boost::shared_ptr<CReserveKey> rKey(new CReserveKey(pwalletMain));
-    CPubKey pubkey;
-    if (!rKey->GetReservedKey(pubkey))
-    	printf("error could not get pubkey\n");
-
-    CKey key;
-
-    if (!pwalletMain->GetKey(pubkey.GetID(), key))
-    	printf("error could not get key\n");
-
-    return key;
-}
-
 void static CertifiedValidationNode(const CChainParams& chainparams)
 {
     LogPrintf("Certified validation node started\n");
@@ -404,13 +404,14 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
             pblock->nCreatorId = 0xc001d00d;
 
             // test signing START
-            std::vector<unsigned char> vchBlockSig;
             CKey key = GetTMPKey();
 
-            if(!key.SignCompact(pblock->GetHash(), vchBlockSig))
-            	printf("error signing block\n");
+            CSignedCVNVote signedVote(0xc001d00d, pblock->nCreatorId, 0);
 
-            pblock->vVotes.push_back(vchBlockSig);
+            if(!key.SignCompact(signedVote.GetHash(), signedVote.vSignature))
+            	printf("error signing vote\n");
+
+            pblock->vVotes.push_back(signedVote);
             // test signing END
 
             LogPrintf("Running CertifiedValidationNode with %u transactions in block (%u bytes)\n", pblock->vtx.size(),

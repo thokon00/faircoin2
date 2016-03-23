@@ -15,77 +15,77 @@ public:
     static const int32_t CURRENT_VERSION=1;
     int32_t nVersion;
     uint32_t nSignerNodeId;
-	uint32_t nCreatorNodeId;
-	uint32_t nHeight;
+    uint32_t nCreatorNodeId;
+    uint32_t nHeight;
 
-	ADD_SERIALIZE_METHODS;
+    ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-    	READWRITE(this->nVersion);
-    	nVersion = this->nVersion;
-    	READWRITE(nSignerNodeId);
+        READWRITE(this->nVersion);
+        nVersion = this->nVersion;
+        READWRITE(nSignerNodeId);
         READWRITE(nCreatorNodeId);
         READWRITE(nHeight);
     }
 
     CCVNVote()
     {
-    	SetNull();
+        SetNull();
     }
 
     CCVNVote(const uint32_t nSignerNodeId, const uint32_t nCreatorNodeId, const uint32_t nHeight, const int32_t nVersion = CCVNVote::CURRENT_VERSION)
-	{
-		this->nVersion = nVersion;
-    	this->nSignerNodeId = nSignerNodeId;
-		this->nCreatorNodeId = nCreatorNodeId;
-		this->nHeight = nHeight;
-	}
+    {
+        this->nVersion = nVersion;
+        this->nSignerNodeId = nSignerNodeId;
+        this->nCreatorNodeId = nCreatorNodeId;
+        this->nHeight = nHeight;
+    }
 
     void SetNull()
     {
-    	nVersion = CCVNVote::CURRENT_VERSION;
-    	nSignerNodeId = 0;
-    	nCreatorNodeId = 0;
-    	nHeight = 0;
+        nVersion = CCVNVote::CURRENT_VERSION;
+        nSignerNodeId = 0;
+        nCreatorNodeId = 0;
+        nHeight = 0;
     }
 
     uint256 GetHash() const;
-
-    std::string ToString() const;
 };
 
-class CSignedCVNVote : CCVNVote
+class CSignedCVNVote : public CCVNVote
 {
 public:
-	std::vector<unsigned char> signature;
+    std::vector<unsigned char> vSignature;
 
-	ADD_SERIALIZE_METHODS;
+    ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-    	READWRITE(*(CBlockHeader*)this);
-    	READWRITE(signature);
+        READWRITE(*(CSignedCVNVote*)this);
+        READWRITE(vSignature);
     }
 
     CSignedCVNVote()
     {
-    	SetNull();
+        SetNull();
     }
 
-//    CCVNVote(const uint32_t nSignerNodeId, const uint32_t nCreatorNodeId, const uint32_t nHeight, const int32_t nVersion = CCVNVote::CURRENT_VERSION)
-//	{
-//		this->nVersion = nVersion;
-//    	this->nSignerNodeId = nSignerNodeId;
-//		this->nCreatorNodeId = nCreatorNodeId;
-//		this->nHeight = nHeight;
-//	}
+    CSignedCVNVote(const uint32_t nSignerNodeId, const uint32_t nCreatorNodeId, const uint32_t nHeight, const int32_t nVersion = CCVNVote::CURRENT_VERSION)
+    : CCVNVote(nSignerNodeId, nCreatorNodeId, nHeight, nVersion)
+	{
+        vSignature.clear();
+	}
 
     void SetNull()
     {
-    	CCVNVote::SetNull();
-    	signature.clear();
+        CCVNVote::SetNull();
+        vSignature.clear();
     }
+
+    std::string GetHex() const;
+
+    std::string ToString() const;
 };
 
 #endif // BITCOIN_PRIMITIVES_VOTE_H

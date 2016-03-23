@@ -4,7 +4,6 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "primitives/block.h"
-#include "primitives/vote.h"
 
 #include "hash.h"
 #include "tinyformat.h"
@@ -19,13 +18,17 @@ uint256 CBlockHeader::GetHash() const
 std::string CBlock::ToString() const
 {
     std::stringstream s;
-    s << strprintf("CBlock(hash=%s, ver=%d, hashPrevBlock=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=%u, signatures=%u, vtx=%u)\n",
+    s << strprintf("CBlock(hash=%s, ver=%d, hashPrevBlock=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=%u, votes=%u, vtx=%u)\n",
         GetHash().ToString(),
         nVersion,
         hashPrevBlock.ToString(),
         hashMerkleRoot.ToString(),
         nTime, nCreatorId, vVotes.size(),
         vtx.size());
+    for (unsigned int i = 0; i < vVotes.size(); i++)
+    {
+        s << "  " << vVotes[i].ToString() << "\n";
+    }
     for (unsigned int i = 0; i < vtx.size(); i++)
     {
         s << "  " << vtx[i].ToString() << "\n";
