@@ -1,22 +1,22 @@
 dnl require autoconf 2.60 (AS_ECHO/AS_ECHO_N)
 AC_PREREQ([2.60])
-define(_CLIENT_VERSION_MAJOR, 0)
-define(_CLIENT_VERSION_MINOR, 12)
-define(_CLIENT_VERSION_REVISION, 0)
+define(_CLIENT_VERSION_MAJOR, 1)
+define(_CLIENT_VERSION_MINOR, 9)
+define(_CLIENT_VERSION_REVISION, 99)
 define(_CLIENT_VERSION_BUILD, 0)
-define(_CLIENT_VERSION_IS_RELEASE, true)
+define(_CLIENT_VERSION_IS_RELEASE, false)
 define(_COPYRIGHT_YEAR, 2016)
-AC_INIT([Bitcoin Core],[_CLIENT_VERSION_MAJOR._CLIENT_VERSION_MINOR._CLIENT_VERSION_REVISION],[https://github.com/bitcoin/bitcoin/issues],[bitcoin])
+AC_INIT([FairCoin Core],[_CLIENT_VERSION_MAJOR._CLIENT_VERSION_MINOR._CLIENT_VERSION_REVISION],[https://github.com/FairCoinTeam/faircoin2/issues],[faircoin],[https://fair-coin.org/])
 AC_CONFIG_SRCDIR([src/main.cpp])
-AC_CONFIG_HEADERS([src/config/bitcoin-config.h])
+AC_CONFIG_HEADERS([src/config/faircoin-config.h])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([build-aux/m4])
 
 AC_CANONICAL_HOST
 
-AH_TOP([#ifndef BITCOIN_CONFIG_H])
-AH_TOP([#define BITCOIN_CONFIG_H])
-AH_BOTTOM([#endif //BITCOIN_CONFIG_H])
+AH_TOP([#ifndef FAIRCOIN_CONFIG_H])
+AH_TOP([#define FAIRCOIN_CONFIG_H])
+AH_BOTTOM([#endif //FAIRCOIN_CONFIG_H])
 
 dnl faketime breaks configure and is only needed for make. Disable it here.
 unset FAKETIME
@@ -384,7 +384,7 @@ AC_C_BIGENDIAN
 dnl Check for pthread compile/link requirements
 AX_PTHREAD
 
-# The following macro will add the necessary defines to bitcoin-config.h, but
+# The following macro will add the necessary defines to faircoin-config.h, but
 # they also need to be passed down to any subprojects. Pull the results out of
 # the cache and add them to CPPFLAGS.
 AC_SYS_LARGEFILE

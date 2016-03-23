@@ -8,13 +8,13 @@
 
 #include "arith_uint256.h"
 #include "primitives/block.h"
-#include "pow.h"
 #include "tinyformat.h"
 #include "uint256.h"
 
 #include <vector>
 
 #include <boost/foreach.hpp>
+#include "consensus/params.h"
 
 struct CDiskBlockPos
 {
@@ -142,8 +142,8 @@ public:
     int nVersion;
     uint256 hashMerkleRoot;
     unsigned int nTime;
-    unsigned int nBits;
-    unsigned int nNonce;
+    unsigned int nCreatorId;
+    std::vector< std::vector<unsigned char> > vSignatures;
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     uint32_t nSequenceId;
@@ -166,8 +166,8 @@ public:
         nVersion       = 0;
         hashMerkleRoot = uint256();
         nTime          = 0;
-        nBits          = 0;
-        nNonce         = 0;
+        nCreatorId     = 0;
+        vSignatures.clear();
     }
 
     CBlockIndex()
@@ -182,8 +182,8 @@ public:
         nVersion       = block.nVersion;
         hashMerkleRoot = block.hashMerkleRoot;
         nTime          = block.nTime;
-        nBits          = block.nBits;
-        nNonce         = block.nNonce;
+        nCreatorId     = block.nCreatorId;
+        vSignatures    = block.vSignatures;
     }
 
     CDiskBlockPos GetBlockPos() const {
@@ -212,8 +212,8 @@ public:
             block.hashPrevBlock = pprev->GetBlockHash();
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
-        block.nBits          = nBits;
-        block.nNonce         = nNonce;
+        block.nCreatorId     = nCreatorId;
+        block.vSignatures    = vSignatures;
         return block;
     }
 
@@ -318,8 +318,8 @@ public:
         READWRITE(hashPrev);
         READWRITE(hashMerkleRoot);
         READWRITE(nTime);
-        READWRITE(nBits);
-        READWRITE(nNonce);
+        READWRITE(nCreatorId);
+        READWRITE(vSignatures);
     }
 
     uint256 GetBlockHash() const
@@ -329,8 +329,8 @@ public:
         block.hashPrevBlock   = hashPrev;
         block.hashMerkleRoot  = hashMerkleRoot;
         block.nTime           = nTime;
-        block.nBits           = nBits;
-        block.nNonce          = nNonce;
+        block.nCreatorId      = nCreatorId;
+        block.vSignatures     = vSignatures;
         return block.GetHash();
     }
 

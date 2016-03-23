@@ -55,7 +55,6 @@ UniValue getinfo(const UniValue& params, bool fHelp)
             "  \"timeoffset\": xxxxx,        (numeric) the time offset\n"
             "  \"connections\": xxxxx,       (numeric) the number of connections\n"
             "  \"proxy\": \"host:port\",     (string, optional) the proxy used by the server\n"
-            "  \"difficulty\": xxxxxx,       (numeric) the current difficulty\n"
             "  \"testnet\": true|false,      (boolean) if the server is using testnet or not\n"
             "  \"keypoololdest\": xxxxxx,    (numeric) the timestamp (seconds since GMT epoch) of the oldest pre-generated key in the key pool\n"
             "  \"keypoolsize\": xxxx,        (numeric) how many new keys are pre-generated\n"
@@ -91,7 +90,6 @@ UniValue getinfo(const UniValue& params, bool fHelp)
     obj.push_back(Pair("timeoffset",    GetTimeOffset()));
     obj.push_back(Pair("connections",   (int)vNodes.size()));
     obj.push_back(Pair("proxy",         (proxy.IsValid() ? proxy.proxy.ToStringIPPort() : string())));
-    obj.push_back(Pair("difficulty",    (double)GetDifficulty()));
     obj.push_back(Pair("testnet",       Params().TestnetToBeDeprecatedFieldRPC()));
 #ifdef ENABLE_WALLET
     if (pwalletMain) {

@@ -21,13 +21,13 @@ class CBlockHeader
 {
 public:
     // header
-    static const int32_t CURRENT_VERSION=4;
+    static const int32_t CURRENT_VERSION=1;
     int32_t nVersion;
     uint256 hashPrevBlock;
     uint256 hashMerkleRoot;
     uint32_t nTime;
-    uint32_t nBits;
-    uint32_t nNonce;
+    uint32_t nCreatorId;
+    std::vector< std::vector<unsigned char> > vSignatures;
 
     CBlockHeader()
     {
@@ -43,8 +43,8 @@ public:
         READWRITE(hashPrevBlock);
         READWRITE(hashMerkleRoot);
         READWRITE(nTime);
-        READWRITE(nBits);
-        READWRITE(nNonce);
+        READWRITE(nCreatorId);
+        READWRITE(vSignatures);
     }
 
     void SetNull()
@@ -53,13 +53,13 @@ public:
         hashPrevBlock.SetNull();
         hashMerkleRoot.SetNull();
         nTime = 0;
-        nBits = 0;
-        nNonce = 0;
+        nCreatorId = 0;
+        vSignatures.clear();
     }
 
     bool IsNull() const
     {
-        return (nBits == 0);
+        return (nCreatorId == 0);
     }
 
     uint256 GetHash() const;
@@ -113,8 +113,8 @@ public:
         block.hashPrevBlock  = hashPrevBlock;
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
-        block.nBits          = nBits;
-        block.nNonce         = nNonce;
+        block.nCreatorId     = nCreatorId;
+        block.vSignatures    = vSignatures;
         return block;
     }
 

@@ -9,7 +9,6 @@
 #include "chainparams.h"
 #include "hash.h"
 #include "main.h"
-#include "pow.h"
 #include "uint256.h"
 
 #include <stdint.h>
@@ -198,14 +197,12 @@ bool CBlockTreeDB::LoadBlockIndexGuts()
                 pindexNew->nVersion       = diskindex.nVersion;
                 pindexNew->hashMerkleRoot = diskindex.hashMerkleRoot;
                 pindexNew->nTime          = diskindex.nTime;
-                pindexNew->nBits          = diskindex.nBits;
-                pindexNew->nNonce         = diskindex.nNonce;
+                pindexNew->nCreatorId     = diskindex.nCreatorId;
+                pindexNew->vSignatures    = diskindex.vSignatures;
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
-                if (!CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, Params().GetConsensus()))
-                    return error("LoadBlockIndex(): CheckProofOfWork failed: %s", pindexNew->ToString());
-
+                //TODO: put CVN checks here
                 pcursor->Next();
             } else {
                 return error("LoadBlockIndex() : failed to read value");

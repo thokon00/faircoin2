@@ -4,7 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #if defined(HAVE_CONFIG_H)
-#include "config/bitcoin-config.h"
+#include "config/faircoin-config.h"
 #endif
 
 #include "init.h"
@@ -195,7 +195,7 @@ void Shutdown()
     if (pwalletMain)
         pwalletMain->Flush(false);
 #endif
-    GenerateBitcoins(false, 0, Params());
+    RunCertifiedValidationNode(false, Params());
     StopNode();
     StopTorControl();
     UnregisterNodeSignals(GetNodeSignals());
@@ -1607,12 +1607,6 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     if (mapArgs.count("-blocknotify"))
         uiInterface.NotifyBlockTip.connect(BlockNotifyCallback);
 
-    uiInterface.InitMessage(_("Activating best chain..."));
-    // scan for better chains in the block chain database, that are not yet connected in the active best chain
-    CValidationState state;
-    if (!ActivateBestChain(state, chainparams))
-        strErrors << "Failed to connect best block";
-
     std::vector<boost::filesystem::path> vImportFiles;
     if (mapArgs.count("-loadblock"))
     {
@@ -1657,7 +1651,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     scheduler.scheduleEvery(f, nPowTargetSpacing);
 
     // Generate coins in the background
-    GenerateBitcoins(GetBoolArg("-gen", DEFAULT_GENERATE), GetArg("-genproclimit", DEFAULT_GENERATE_THREADS), chainparams);
+    RunCertifiedValidationNode(GetBoolArg("-gen", DEFAULT_GENERATE), chainparams);
 
     // ********************************************************* Step 12: finished
 

@@ -19,16 +19,9 @@ struct Params {
     int nMajorityEnforceBlockUpgrade;
     int nMajorityRejectBlockOutdated;
     int nMajorityWindow;
-    /** Block height and hash at which BIP34 becomes active */
-    int BIP34Height;
-    uint256 BIP34Hash;
-    /** Proof of work parameters */
-    uint256 powLimit;
-    bool fPowAllowMinDifficultyBlocks;
-    bool fPowNoRetargeting;
+
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
-    int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
 };
 } // namespace Consensus
 
