@@ -11,14 +11,14 @@
 
 #include <stdio.h>
 
-uint256 CCVNVote::GetHash() const
+uint256 CUnsignedCVNVote::GetHash() const
 {
     return SerializeHash(*this);
 }
 
-std::string CSignedCVNVote::GetHex() const
+std::string CCVNVote::GetSignatureHex() const
 {
-    int size = vSignature.size();
+    size_t size = vSignature.size();
 
 	char psz[size * 2 + 1];
     for (unsigned int i = 0; i < size; i++)
@@ -26,12 +26,12 @@ std::string CSignedCVNVote::GetHex() const
     return std::string(psz, psz + size * 2);
 }
 
-std::string CSignedCVNVote::ToString() const
+std::string CCVNVote::ToString() const
 {
     std::stringstream s;
-    s << strprintf("CSignedCVNVote(signerNodeId=%u, creatorNodeId=%u, nHeight=%u, signature=%s)\n",
-        nSignerNodeId,
-        nCreatorNodeId,
-        nHeight, GetHex());
+    s << strprintf("CCVNVote(signerId=%u, creatorId=%u, nHeight=%u, sig=%s)",
+        nSignerId,
+        nCreatorId,
+        nHeight, GetSignatureHex());
     return s.str();
 }

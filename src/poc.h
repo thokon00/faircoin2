@@ -6,10 +6,9 @@
 #define BITCOIN_POC_H
 
 #include "consensus/params.h"
+#include "primitives/block.h"
 
 #include <stdint.h>
-
-class CBlockHeader;
 
 /** Check whether a block hash satisfies the proof-of-cooperation requirements */
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&);

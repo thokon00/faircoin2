@@ -101,8 +101,8 @@ public:
         nPruneAfterHeight = 100000;
 
         genesis = CreateGenesisBlock(1458643274, 0xC001D00D, 1, 50 * COIN);
-        CSignedCVNVote signedGenesisVote(0xC001D00D, 0xC001D00D, 0);
-        genesis.vVotes.push_back(signedGenesisVote); // genesis vote
+        CCVNVote genesisVote(0xC001D00D, 0xC001D00D, 0);
+        genesis.vVotes.push_back(genesisVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
 //        printf("main: %s\n", consensus.hashGenesisBlock.ToString().c_str());
@@ -162,8 +162,8 @@ public:
         nPruneAfterHeight = 1000;
 
         genesis = CreateGenesisBlock(1458643274, 0xC001CAFE, 1, 50 * COIN);
-        CSignedCVNVote signedGenesisVote(0xC001CAFE, 0xC001CAFE, 0);
-        genesis.vVotes.push_back(signedGenesisVote); // genesis vote
+        CCVNVote genesisVote(0xC001CAFE, 0xC001CAFE, 0);
+        genesis.vVotes.push_back(genesisVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("test: %s\n", consensus.hashGenesisBlock.ToString().c_str());
@@ -224,8 +224,8 @@ public:
         nPruneAfterHeight = 1000;
 
         genesis = CreateGenesisBlock(1458643274, 0xCAFEBABE, 1, 50 * COIN);
-        CSignedCVNVote signedGenesisVote(0xCAFEBABE, 0xCAFEBABE, 0);
-        genesis.vVotes.push_back(signedGenesisVote); // genesis vote
+        CCVNVote genesisVote(0xCAFEBABE, 0xCAFEBABE, 0);
+        genesis.vVotes.push_back(genesisVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("reg: %s\n", consensus.hashGenesisBlock.ToString().c_str());

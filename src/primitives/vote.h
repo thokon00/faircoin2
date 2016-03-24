@@ -9,25 +9,25 @@
 #include "serialize.h"
 #include "uint256.h"
 
-class CCVNVote
+class CUnsignedCVNVote
 {
 public:
     static const int32_t CURRENT_VERSION=1;
     int32_t nVersion;
-    uint32_t nSignerNodeId;
-    uint32_t nCreatorNodeId;
+    uint32_t nSignerId;
+    uint32_t nCreatorId;
     uint32_t nHeight;
 
-    CCVNVote()
+    CUnsignedCVNVote()
     {
         SetNull();
     }
 
-    CCVNVote(const uint32_t nSignerNodeId, const uint32_t nCreatorNodeId, const uint32_t nHeight, const int32_t nVersion = CCVNVote::CURRENT_VERSION)
+    CUnsignedCVNVote(const uint32_t nSignerNodeId, const uint32_t nCreatorNodeId, const uint32_t nHeight, const int32_t nVersion = CUnsignedCVNVote::CURRENT_VERSION)
     {
         this->nVersion = nVersion;
-        this->nSignerNodeId = nSignerNodeId;
-        this->nCreatorNodeId = nCreatorNodeId;
+        this->nSignerId = nSignerNodeId;
+        this->nCreatorId = nCreatorNodeId;
         this->nHeight = nHeight;
     }
 
@@ -37,34 +37,34 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
         READWRITE(this->nVersion);
         nVersion = this->nVersion;
-        READWRITE(nSignerNodeId);
-        READWRITE(nCreatorNodeId);
+        READWRITE(nSignerId);
+        READWRITE(nCreatorId);
         READWRITE(nHeight);
     }
 
     void SetNull()
     {
-        nVersion = CCVNVote::CURRENT_VERSION;
-        nSignerNodeId = 0;
-        nCreatorNodeId = 0;
+        nVersion = CUnsignedCVNVote::CURRENT_VERSION;
+        nSignerId = 0;
+        nCreatorId = 0;
         nHeight = 0;
     }
 
     uint256 GetHash() const;
 };
 
-class CSignedCVNVote : public CCVNVote
+class CCVNVote : public CUnsignedCVNVote
 {
 public:
     std::vector<unsigned char> vSignature;
 
-    CSignedCVNVote()
+    CCVNVote()
     {
         SetNull();
     }
 
-    CSignedCVNVote(const uint32_t nSignerNodeId, const uint32_t nCreatorNodeId, const uint32_t nHeight, const int32_t nVersion = CCVNVote::CURRENT_VERSION)
-    : CCVNVote(nSignerNodeId, nCreatorNodeId, nHeight, nVersion)
+    CCVNVote(const uint32_t nSignerNodeId, const uint32_t nCreatorNodeId, const uint32_t nHeight, const int32_t nVersion = CUnsignedCVNVote::CURRENT_VERSION)
+    : CUnsignedCVNVote(nSignerNodeId, nCreatorNodeId, nHeight, nVersion)
 	{
         vSignature.clear();
 	}
@@ -73,17 +73,17 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(*(CCVNVote*)this);
+        READWRITE(*(CUnsignedCVNVote*)this);
         READWRITE(vSignature);
     }
 
     void SetNull()
     {
-        CCVNVote::SetNull();
+        CUnsignedCVNVote::SetNull();
         vSignature.clear();
     }
 
-    std::string GetHex() const;
+    std::string GetSignatureHex() const;
 
     std::string ToString() const;
 };

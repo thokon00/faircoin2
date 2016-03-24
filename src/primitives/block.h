@@ -28,7 +28,7 @@ public:
     uint256 hashMerkleRoot;
     uint32_t nTime;
     uint32_t nCreatorId;
-    std::vector<CSignedCVNVote> vVotes;
+    std::vector<CCVNVote> vVotes;
 
     CBlockHeader()
     {

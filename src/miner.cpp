@@ -413,13 +413,13 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
 
             pblock->nCreatorId = 1;
 
-            CSignedCVNVote signedVote1(1, 1, pindexBestHeader->nHeight + 1);
+            CCVNVote signedVote1(1, 1, pindexBestHeader->nHeight + 1);
             if (!key1.SignCompact(signedVote1.GetHash(), signedVote1.vSignature))
             	printf("error signing vote1\n");
 
             pblock->vVotes.push_back(signedVote1);
 
-            CSignedCVNVote signedVote2(2, 1, pindexBestHeader->nHeight + 1);
+            CCVNVote signedVote2(2, 1, pindexBestHeader->nHeight + 1);
             if (!key2.SignCompact(signedVote2.GetHash(), signedVote2.vSignature))
             	printf("error signing vote2\n");
 

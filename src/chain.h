@@ -143,7 +143,7 @@ public:
     uint256 hashMerkleRoot;
     unsigned int nTime;
     unsigned int nCreatorId;
-    std::vector<CSignedCVNVote> vVotes;
+    std::vector<CCVNVote> vVotes;
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     uint32_t nSequenceId;
