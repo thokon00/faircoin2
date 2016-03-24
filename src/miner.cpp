@@ -27,6 +27,7 @@
 #include "keystore.h"
 #include "init.h"
 #include "wallet/wallet.h"
+#include "base58.h"
 
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
@@ -363,6 +364,15 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
     boost::shared_ptr<CReserveScript> coinbaseScript;
     GetMainSignals().ScriptForMining(coinbaseScript);
 
+    // two test signing keys
+    CBitcoinSecret vchSecret1;
+    vchSecret1.SetString("a15g6S6ZeFyhW9yUJ6B7yFmhucRadhoUDT1XN9mS9Y5Y6B6TTEPe");
+    CKey key1 = vchSecret1.GetKey();
+
+    CBitcoinSecret vchSecret2;
+    vchSecret2.SetString("a4LbQTpZJhSEqGucUNqBKV4RRwKVnrgiznZjYaA6UYX1LfiXd1Nv");
+    CKey key2 = vchSecret2.GetKey();
+
     try {
         // Throw an error if no script was provided.  This can happen
         // due to some internal error but also if the keypool is empty.
@@ -401,18 +411,19 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
             CBlock *pblock = &pblocktemplate->block;
             IncrementExtraNonce(pblock, pindexPrev, nExtraNonce);
 
-            pblock->nCreatorId = 0xc001d00d;
+            pblock->nCreatorId = 1;
 
-            // test signing START
-            CKey key = GetTMPKey();
+            CSignedCVNVote signedVote1(1, 1, pindexBestHeader->nHeight + 1);
+            if (!key1.SignCompact(signedVote1.GetHash(), signedVote1.vSignature))
+            	printf("error signing vote1\n");
 
-            CSignedCVNVote signedVote(0xc001d00d, pblock->nCreatorId, 0);
+            pblock->vVotes.push_back(signedVote1);
 
-            if(!key.SignCompact(signedVote.GetHash(), signedVote.vSignature))
-            	printf("error signing vote\n");
+            CSignedCVNVote signedVote2(2, 1, pindexBestHeader->nHeight + 1);
+            if (!key2.SignCompact(signedVote2.GetHash(), signedVote2.vSignature))
+            	printf("error signing vote2\n");
 
-            pblock->vVotes.push_back(signedVote);
-            // test signing END
+            pblock->vVotes.push_back(signedVote2);
 
             LogPrintf("Running CertifiedValidationNode with %u transactions in block (%u bytes)\n", pblock->vtx.size(),
                 ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION));
@@ -424,9 +435,9 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
             uint256 hash;
             int cnt = 0;
             while (true) {
-            	MilliSleep(2000);
+            	MilliSleep(5000);
             	// Check if something found
-                if (!(++cnt % 5)) //ScanHash(pblock, nNonce, &hash)
+                if (!(++cnt % 2)) //ScanHash(pblock, nNonce, &hash)
                 {
                 	// Found a solution
 					SetThreadPriority(THREAD_PRIORITY_NORMAL);

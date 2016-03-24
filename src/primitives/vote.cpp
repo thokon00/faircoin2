@@ -18,10 +18,12 @@ uint256 CCVNVote::GetHash() const
 
 std::string CSignedCVNVote::GetHex() const
 {
-    char psz[sizeof(vSignature) * 2 + 1];
-    for (unsigned int i = 0; i < sizeof(vSignature); i++)
-        sprintf(psz + i * 2, "%02x", vSignature[sizeof(vSignature) - i - 1]);
-    return std::string(psz, psz + sizeof(vSignature) * 2);
+    int size = vSignature.size();
+
+	char psz[size * 2 + 1];
+    for (unsigned int i = 0; i < size; i++)
+        sprintf(psz + i * 2, "%02x", vSignature[size - i - 1]);
+    return std::string(psz, psz + size * 2);
 }
 
 std::string CSignedCVNVote::ToString() const

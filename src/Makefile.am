@@ -123,6 +123,7 @@ BITCOIN_CORE_H = \
   policy/fees.h \
   policy/policy.h \
   policy/rbf.h \
+  poc.h \
   prevector.h \
   primitives/block.h \
   primitives/transaction.h \
@@ -200,6 +201,7 @@ libbitcoin_server_a_SOURCES = \
   noui.cpp \
   policy/fees.cpp \
   policy/policy.cpp \
+  poc.cpp \
   rest.cpp \
   rpcblockchain.cpp \
   rpcmisc.cpp \

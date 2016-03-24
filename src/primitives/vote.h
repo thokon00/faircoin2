@@ -18,17 +18,6 @@ public:
     uint32_t nCreatorNodeId;
     uint32_t nHeight;
 
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(this->nVersion);
-        nVersion = this->nVersion;
-        READWRITE(nSignerNodeId);
-        READWRITE(nCreatorNodeId);
-        READWRITE(nHeight);
-    }
-
     CCVNVote()
     {
         SetNull();
@@ -40,6 +29,17 @@ public:
         this->nSignerNodeId = nSignerNodeId;
         this->nCreatorNodeId = nCreatorNodeId;
         this->nHeight = nHeight;
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(this->nVersion);
+        nVersion = this->nVersion;
+        READWRITE(nSignerNodeId);
+        READWRITE(nCreatorNodeId);
+        READWRITE(nHeight);
     }
 
     void SetNull()
@@ -58,14 +58,6 @@ class CSignedCVNVote : public CCVNVote
 public:
     std::vector<unsigned char> vSignature;
 
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(*(CSignedCVNVote*)this);
-        READWRITE(vSignature);
-    }
-
     CSignedCVNVote()
     {
         SetNull();
@@ -76,6 +68,14 @@ public:
 	{
         vSignature.clear();
 	}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(*(CCVNVote*)this);
+        READWRITE(vSignature);
+    }
 
     void SetNull()
     {

@@ -10,6 +10,7 @@
 #include "util.h"
 #include "utilstrencodings.h"
 #include "key.h"
+#include "base58.h"
 
 #include <assert.h>
 
@@ -18,9 +19,7 @@
 #include "chainparamsseeds.h"
 #include <stdio.h>
 
-extern CKey GetTMPKey();
-
-static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nNonce, int32_t nVersion, const CAmount& genesisReward)
+static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nCreatorId, int32_t nVersion, const CAmount& genesisReward)
 {
     CMutableTransaction txNew;
     txNew.nVersion = 1;
@@ -32,12 +31,11 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
 
     CBlock genesis;
     genesis.nTime      = nTime;
-    genesis.nCreatorId = 0xC001D00D;
+    genesis.nCreatorId = nCreatorId;
     genesis.nVersion   = nVersion;
     genesis.vtx.push_back(txNew);
     genesis.hashPrevBlock.SetNull();
     genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
-    genesis.vVotes.resize(1);
     return genesis;
 }
 
@@ -52,11 +50,11 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  *     CTxOut(nValue=50.00000000, scriptPubKey=0x5F1DF16B2B704C8A578D0B)
  *   vMerkleTree: 4a5e1e
  */
-static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, int32_t nVersion, const CAmount& genesisReward)
+static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nCreatorId, int32_t nVersion, const CAmount& genesisReward)
 {
     const char* pszTimestamp = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks";
     const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-    return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nVersion, genesisReward);
+    return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nCreatorId, nVersion, genesisReward);
 }
 
 /**
@@ -69,6 +67,14 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, int32_t nVersi
  *    timestamp before)
  * + Contains no strange transactions
  */
+
+std::string GetHex(std::vector<unsigned char> data)
+{
+    char psz[sizeof(data) * 2 + 1];
+    for (unsigned int i = 0; i < sizeof(data); i++)
+        sprintf(psz + i * 2, "%02x", data[sizeof(data) - i - 1]);
+    return std::string(psz, psz + sizeof(data) * 2);
+}
 
 class CMainParams : public CChainParams {
 public:
@@ -94,19 +100,14 @@ public:
         nMaxTipAge = 24 * 60 * 60;
         nPruneAfterHeight = 100000;
 
-        genesis = CreateGenesisBlock(1458643274, 0, 1, 50 * COIN);
-
-        CKey key = GetTMPKey();
-        CSignedCVNVote signedGenesisVote(0xc001d00d, 0xc001d00d, 0);
-        if(!key.SignCompact(signedGenesisVote.GetHash(), signedGenesisVote.vSignature))
-        	printf("error signing genesisVote\n");
-
+        genesis = CreateGenesisBlock(1458643274, 0xC001D00D, 1, 50 * COIN);
+        CSignedCVNVote signedGenesisVote(0xC001D00D, 0xC001D00D, 0);
         genesis.vVotes.push_back(signedGenesisVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
-        //printf("main: %s\n", consensus.hashGenesisBlock.ToString().c_str());
-        printf("genesis block main net:\n%s\n", genesis.ToString().c_str());
-        assert(consensus.hashGenesisBlock == uint256S("0x2a25f2fee4a266917e7f7cdd6615d82970dcd9fef375d259c51cc81a32c71554"));
+//        printf("main: %s\n", consensus.hashGenesisBlock.ToString().c_str());
+//        printf("genesis block main net:\n%s\n", genesis.ToString().c_str());
+        assert(consensus.hashGenesisBlock == uint256S("0xa2f9d5abafa8b081d2e686d0a5b844df69c1203881a0e4010f4fe960cb7c6607"));
         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
         vSeeds.push_back(CDNSSeedData("1.fair-coin.org", "faircoin2-seed1.fair-coin.org")); // Thomas König
@@ -120,7 +121,7 @@ public:
 
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
 
-        fMiningRequiresPeers = true;
+        fMiningRequiresPeers = false; //TODO: set to true again
         fDefaultConsistencyChecks = false;
         fRequireStandard = true;
         fMineBlocksOnDemand = false;
@@ -160,18 +161,13 @@ public:
         nMaxTipAge = 0x7fffffff;
         nPruneAfterHeight = 1000;
 
-        genesis = CreateGenesisBlock(1458643274, 0, 1, 50 * COIN);
-
-        CKey key = GetTMPKey();
-        CSignedCVNVote signedGenesisVote(0xc001d00d, 0xc001d00d, 0);
-        if(!key.SignCompact(signedGenesisVote.GetHash(), signedGenesisVote.vSignature))
-        	printf("error signing genesisVote\n");
-
+        genesis = CreateGenesisBlock(1458643274, 0xC001CAFE, 1, 50 * COIN);
+        CSignedCVNVote signedGenesisVote(0xC001CAFE, 0xC001CAFE, 0);
         genesis.vVotes.push_back(signedGenesisVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("test: %s\n", consensus.hashGenesisBlock.ToString().c_str());
-        assert(consensus.hashGenesisBlock == uint256S("0x03afdf7c950249ed34690e8579cc657105d1507e560f42a44679acb8c1bc5265"));
+        assert(consensus.hashGenesisBlock == uint256S("0x9721df78563a7e14a025871d4ce7073146ea085ebc0ee2953c9d63847f93bb9d"));
         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
         vFixedSeeds.clear();
@@ -227,18 +223,13 @@ public:
         nDefaultPort = 42404;
         nPruneAfterHeight = 1000;
 
-        genesis = CreateGenesisBlock(1458643274, 0, 1, 50 * COIN);
-
-        CKey key = GetTMPKey();
-        CSignedCVNVote signedGenesisVote(0xc001d00d, 0xc001d00d, 0);
-        if(!key.SignCompact(signedGenesisVote.GetHash(), signedGenesisVote.vSignature))
-        	printf("error signing genesisVote\n");
-
+        genesis = CreateGenesisBlock(1458643274, 0xCAFEBABE, 1, 50 * COIN);
+        CSignedCVNVote signedGenesisVote(0xCAFEBABE, 0xCAFEBABE, 0);
         genesis.vVotes.push_back(signedGenesisVote); // genesis vote
 
         consensus.hashGenesisBlock = genesis.GetHash();
         //printf("reg: %s\n", consensus.hashGenesisBlock.ToString().c_str());
-        assert(consensus.hashGenesisBlock == uint256S("0x03afdf7c950249ed34690e8579cc657105d1507e560f42a44679acb8c1bc5265"));
+        assert(consensus.hashGenesisBlock == uint256S("0x83efb991e9934dbf9a9a35a0daa1e3d4b2e275e2c9137c51888488ff828e984f"));
         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
         vFixedSeeds.clear(); //! Regtest mode doesn't have any fixed seeds.

@@ -19,6 +19,7 @@
 #include "merkleblock.h"
 #include "net.h"
 #include "policy/policy.h"
+#include "poc.h"
 #include "primitives/block.h"
 #include "primitives/transaction.h"
 #include "script/script.h"
@@ -2909,13 +2910,11 @@ bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, unsigne
     return true;
 }
 
-bool CheckBlockHeader(const CBlockHeader& block, CValidationState& state, bool fCheckPOW)
+bool CheckBlockHeader(const CBlockHeader& block, CValidationState& state, bool fCheckPOC)
 {
-    // TODO: put CVN checks here
-
-//    if (fCheckPOW && !CheckProofOfWork(block.GetHash(), block.nBits, Params().GetConsensus()))
-//        return state.DoS(50, error("CheckBlockHeader(): proof of work failed"),
-//                         REJECT_INVALID, "high-hash");
+    if (fCheckPOC && !CheckProofOfCooperation(block, Params().GetConsensus()))
+        return state.DoS(50, error("CheckBlockHeader(): proof of cooperation failed"),
+                         REJECT_INVALID, "high-hash");
 
     // Check timestamp
     if (block.GetBlockTime() > GetAdjustedTime() + 2 * 60 * 60)
