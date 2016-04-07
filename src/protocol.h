@@ -218,6 +218,14 @@ extern const char *REJECT;
  * @see https://bitcoin.org/en/developer-reference#sendheaders
  */
 extern const char *SENDHEADERS;
+/**
+ * Adds a certified validation node to the FairCoin network
+ */
+extern const char *ADDCVN;
+/**
+ * Removes a certified validation node from the FairCoin network
+ */
+extern const char *REMOVECVN;
 
 };
 

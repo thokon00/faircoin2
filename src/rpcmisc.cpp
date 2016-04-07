@@ -12,7 +12,9 @@
 #include "rpcserver.h"
 #include "timedata.h"
 #include "util.h"
+#include "cvn.h"
 #include "utilstrencodings.h"
+#include "tinyformat.h"
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h"
@@ -392,5 +394,113 @@ UniValue setmocktime(const UniValue& params, bool fHelp)
         pnode->nLastSend = pnode->nLastRecv = t;
     }
 
+    return NullUniValue;
+}
+
+UniValue addcvn(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 3)
+        throw runtime_error(
+            "addcvn \"nodeId\" \"pubkey\" [\"sigs\",...]\n"
+            "\nAdd a new CVN to the FairCoin network\n"
+            "\nArguments:\n"
+            "1. \"nodeId\"       (int, required) The node ID (in decimal) of the new CVN.\n"
+            "2. \"pubkey\"       (string, required) The public key of the CVN (in hex).\n"
+            "3. \"sigs\"         (string, required) The admin signatures\n"
+            "\nResult:\n"
+            "{\n"
+                "  \"nodeId\":\"node ID (dec) node ID (hex)\",  (string) The node ID  of the new CVN in decimal and in hex separated by a space\n"
+                "  \"address\":\"faircoin address\",            (string) The FairCoin address of the new CVN.\n"
+                "  \"pubKey\":\"public key\",                   (string) The public key of the new CVN (in hex).\n"
+                "  \"signatures\":\"number of signatures\"      (string) The number of admin signatures that signed the CvnInfo.\n"
+             "}\n"
+            "\nExamples:\n"
+            "\nAdd a new CVN\n"
+            + HelpExampleCli("addcvn", "123488 \"04...00\" [\"a1b5..9093\",\"0432..12aa\"]")
+        );
+
+    LOCK(cs_main);
+
+    uint32_t nNodeId = params[0].get_int();
+
+    std::vector<unsigned char> vchPubKey = ParseHex(params[1].get_str());
+    CPubKey pubKey(vchPubKey);
+
+    if (!pubKey.IsFullyValid())
+        throw runtime_error(" Invalid public key: " + params[1].get_str());
+
+    CKeyID keyID = pubKey.GetID();
+
+    CBitcoinAddress address;
+    address.Set(keyID);
+
+    const UniValue& sigs = params[1].get_array();
+    uint32_t nMaxAdminSigners = (uint32_t) Params().MaxAdminSigners();
+    uint32_t nMinAdminSigners = (uint32_t) Params().MinAdminSigners();
+
+    if (sigs.size() < nMinAdminSigners)
+        throw runtime_error(
+            strprintf("not enough signatures supplied "
+                      "(got %u signatures, but need at least %u to sign)", sigs.size(), nMinAdminSigners));
+    if (sigs.size() > nMaxAdminSigners)
+        throw runtime_error(
+                strprintf("too many signatures supplied %u (%u max)\nReduce the number", sigs.size(), nMaxAdminSigners));
+
+    CSignedCvnInfo signedInfo(nNodeId, vchPubKey);
+
+    std::vector< std::vector<unsigned char> > vSignatures;
+    signedInfo.vSignatures.resize(sigs.size());
+
+    for (unsigned int i = 0; i < sigs.size(); i++)
+    {
+        const std::string& strSig = sigs[i].get_str();
+        signedInfo.vSignatures[i] = ParseHex(strSig);
+    }
+
+    if (!signedInfo.CheckCvnInfo(Params()))
+        throw runtime_error("CvnInfo check failed");
+
+    LogPrintf("adding CVN 0x%08x (%u) with pubKey %s (%s) and %u valid signatures to the network\n", nNodeId, nNodeId, address.ToString(), HexStr(vchPubKey), signedInfo.vSignatures.size());
+
+    // Relay CVN
+    {
+    	LOCK(cs_vNodes);
+        BOOST_FOREACH(CNode* pnode, vNodes)
+    	signedInfo.RelayTo(pnode);
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("nodeId", strprintf("0x%08x %u", nNodeId, nNodeId)));
+    result.push_back(Pair("address", address.ToString()));
+    result.push_back(Pair("pubKey", HexStr(vchPubKey)));
+    result.push_back(Pair("signatures", (int)signedInfo.vSignatures.size()));
+
+    return result;
+}
+
+UniValue removecvn(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 3)
+        throw runtime_error(
+            "verifymessage \"bitcoinaddress\" \"signature\" \"message\"\n"
+            "\nVerify a signed message\n"
+            "\nArguments:\n"
+            "1. \"bitcoinaddress\"  (string, required) The bitcoin address to use for the signature.\n"
+            "2. \"signature\"       (string, required) The signature provided by the signer in base 64 encoding (see signmessage).\n"
+            "3. \"message\"         (string, required) The message that was signed.\n"
+            "\nResult:\n"
+            "true|false   (boolean) If the signature is verified or not.\n"
+            "\nExamples:\n"
+            "\nUnlock the wallet for 30 seconds\n"
+            + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
+            "\nCreate the signature\n"
+            + HelpExampleCli("signmessage", "\"1D1ZrZNe3JUo7ZycKEYQQiQAWd9y54F4XZ\" \"my message\"") +
+            "\nVerify the signature\n"
+            + HelpExampleCli("verifymessage", "\"1D1ZrZNe3JUo7ZycKEYQQiQAWd9y54F4XZ\" \"signature\" \"my message\"") +
+            "\nAs json rpc\n"
+            + HelpExampleRpc("verifymessage", "\"1D1ZrZNe3JUo7ZycKEYQQiQAWd9y54F4XZ\", \"signature\", \"my message\"")
+        );
+
+    LOCK(cs_main);
     return NullUniValue;
 }

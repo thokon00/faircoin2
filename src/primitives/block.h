@@ -7,9 +7,50 @@
 #define BITCOIN_PRIMITIVES_BLOCK_H
 
 #include "primitives/transaction.h"
-#include "primitives/vote.h"
 #include "serialize.h"
 #include "uint256.h"
+
+class CBlockSignature
+{
+public:
+    static const int32_t CURRENT_VERSION=1;
+    int32_t nVersion;
+    uint32_t nSignerId;
+    std::vector<unsigned char> vSignature;
+
+    CBlockSignature()
+    {
+        SetNull();
+    }
+
+    CBlockSignature(const uint32_t nSignerNodeId, const int32_t nVersion = CBlockSignature::CURRENT_VERSION)
+    {
+        this->nVersion = nVersion;
+        this->nSignerId = nSignerNodeId;
+        this->vSignature = vSignature;
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(this->nVersion);
+        nVersion = this->nVersion;
+        READWRITE(nSignerId);
+        READWRITE(vSignature);
+    }
+
+    void SetNull()
+    {
+        nVersion = CBlockSignature::CURRENT_VERSION;
+        nSignerId = 0;
+        vSignature.clear();
+    }
+
+    std::string GetSignatureHex() const;
+
+    std::string ToString() const;
+};
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
@@ -18,7 +59,7 @@
  * in the block is a special one that creates a new coin owned by the creator
  * of the block.
  */
-class CBlockHeader
+class CUnsignedBlockHeader
 {
 public:
     // header
@@ -28,9 +69,9 @@ public:
     uint256 hashMerkleRoot;
     uint32_t nTime;
     uint32_t nCreatorId;
-    std::vector<CCVNVote> vVotes;
+    int nHeight;
 
-    CBlockHeader()
+    CUnsignedBlockHeader()
     {
         SetNull();
     }
@@ -45,17 +86,17 @@ public:
         READWRITE(hashMerkleRoot);
         READWRITE(nTime);
         READWRITE(nCreatorId);
-        READWRITE(vVotes);
+        READWRITE(nHeight);
     }
 
     void SetNull()
     {
-        nVersion = CBlockHeader::CURRENT_VERSION;
+        nVersion = CUnsignedBlockHeader::CURRENT_VERSION;
         hashPrevBlock.SetNull();
         hashMerkleRoot.SetNull();
         nTime = 0;
         nCreatorId = 0;
-        vVotes.clear();
+        nHeight = 0;
     }
 
     bool IsNull() const
@@ -63,7 +104,7 @@ public:
         return (nCreatorId == 0);
     }
 
-    uint256 GetHash() const;
+    uint256 GetUnsignedHash() const;
 
     int64_t GetBlockTime() const
     {
@@ -71,6 +112,33 @@ public:
     }
 };
 
+class CBlockHeader : public CUnsignedBlockHeader
+{
+public:
+    // header
+    std::vector<CBlockSignature> vSignatures;
+
+    CBlockHeader()
+    {
+        SetNull();
+    }
+
+    void SetNull()
+    {
+        CUnsignedBlockHeader::SetNull();
+        vSignatures.clear();
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(*(CUnsignedBlockHeader*)this);
+        READWRITE(vSignatures);
+    }
+
+    uint256 GetHash() const;
+};
 
 class CBlock : public CBlockHeader
 {
@@ -115,7 +183,8 @@ public:
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
         block.nCreatorId     = nCreatorId;
-        block.vVotes         = vVotes;
+        block.nHeight        = nHeight;
+        block.vSignatures    = vSignatures;
         return block;
     }
 

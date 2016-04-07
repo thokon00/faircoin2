@@ -34,6 +34,7 @@
 #include "utilmoneystr.h"
 #include "utilstrencodings.h"
 #include "validationinterface.h"
+#include "cvn.h"
 
 #include <sstream>
 
@@ -1394,7 +1395,7 @@ arith_uint256 GetBlockProof(const CBlockIndex& block)
 {
     arith_uint256 bnSignatures;
 
-    bnSignatures = block.vVotes.size();
+    bnSignatures = block.vSignatures.size();
 
     return bnSignatures;
 }
@@ -2763,7 +2764,6 @@ CBlockIndex* AddToBlockIndex(const CBlockHeader& block)
     if (miPrev != mapBlockIndex.end())
     {
         pindexNew->pprev = (*miPrev).second;
-        pindexNew->nHeight = pindexNew->pprev->nHeight + 1;
         pindexNew->BuildSkip();
     }
     pindexNew->nChainWork = (pindexNew->pprev ? pindexNew->pprev->nChainWork : 1) + GetBlockProof(*pindexNew);
@@ -3218,6 +3218,12 @@ bool ProcessNewBlock(CValidationState& state, const CChainParams& chainparams, c
     if (!ActivateBestChain(state, chainparams, pblock))
         return error("%s: ActivateBestChain failed", __func__);
 
+    if (dbp == NULL) {
+        // we received a new block from another peer
+        // and initialize the count down timer for creating the next block
+        //TODO: implement
+    }
+
     return true;
 }
 
@@ -3440,9 +3446,12 @@ bool static LoadBlockIndexDB()
     {
         CBlockIndex* pindex = item.second;
         pindex->nChainWork = (pindex->pprev ? pindex->pprev->nChainWork : 0) + GetBlockProof(*pindex);
-        LogPrintf("LoadBlockIndexDB : nHeight: %u, nChainwork: %s\n", pindex->nHeight, pindex->nChainWork.ToString());
+        LogPrintf("LoadBlockIndexDB : nHeight: %u, nChainwork: %s, nStatus: %u\n", pindex->nHeight, pindex->nChainWork.ToString(), pindex->nStatus);
         // We can link the chain of blocks for which we've received transactions at some point.
         // Pruned nodes may have deleted the block.
+
+        //LogPrintf("TEST: %s\n", mapblo);
+
         if (pindex->nTx > 0) {
             if (pindex->pprev) {
                 if (pindex->pprev->nChainTx) {
@@ -5171,6 +5180,41 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 LogPrint("net", "Unparseable reject message received\n");
             }
         }
+    }
+
+    else if (strCommand == NetMsgType::ADDCVN)
+    {
+    	CSignedCvnInfo cvnInfo;
+        vRecv >> cvnInfo;
+
+        if (pfrom->setKnownCVNs.count(cvnInfo.nNodeId) == 0)
+        {
+            if (cvnInfo.CheckCvnInfo(chainparams))
+            {
+                // Relay
+                pfrom->setKnownCVNs.insert(cvnInfo.nNodeId);
+                {
+                    LOCK(cs_vNodes);
+                    BOOST_FOREACH(CNode* pnode, vNodes)
+                    	cvnInfo.RelayTo(pnode);
+                }
+            }
+            else {
+                // Small DoS penalty so peers that send us lots of
+                // duplicate/expired/invalid-signature/whatever alerts
+                // eventually get banned.
+                // This isn't a Misbehaving(100) (immediate ban) because the
+                // peer might be an older or different implementation with
+                // a different signature key, etc.
+                Misbehaving(pfrom->GetId(), 10);
+            }
+        }
+
+    }
+
+    else if (strCommand == NetMsgType::REMOVECVN)
+    {
+
     }
 
     else

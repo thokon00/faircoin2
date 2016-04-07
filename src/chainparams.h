@@ -18,6 +18,12 @@ struct CDNSSeedData {
     CDNSSeedData(const std::string &strName, const std::string &strHost) : name(strName), host(strHost) {}
 };
 
+struct CVNAdminSigner {
+    uint32_t signerId;
+    std::vector<unsigned char> signature;
+    CVNAdminSigner(const uint32_t &nSignerId, const std::vector<unsigned char> &vSignature) : signerId(nSignerId), signature(vSignature) {}
+};
+
 struct SeedSpec6 {
     uint8_t addr[16];
     uint16_t port;
@@ -66,6 +72,7 @@ public:
     bool RequireStandard() const { return fRequireStandard; }
     int64_t MaxTipAge() const { return nMaxTipAge; }
     uint64_t PruneAfterHeight() const { return nPruneAfterHeight; }
+    uint64_t BlockSpacing() const { return nBlockSpacing; }
     /** Make miner stop after a block is found. In RPC, don't return until nGenProcLimit blocks are generated */
     bool MineBlocksOnDemand() const { return fMineBlocksOnDemand; }
     /** In the future use NetworkIDString() for RPC fields */
@@ -76,6 +83,9 @@ public:
     const std::vector<unsigned char>& Base58Prefix(Base58Type type) const { return base58Prefixes[type]; }
     const std::vector<SeedSpec6>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
+    int MaxAdminSigners() const { return nMaxAdminSigners; }
+    int MinAdminSigners() const { return nMinAdminSigners; }
+    const std::vector<CVNAdminSigner> GetAdminSigners() const { return vAdminSigners; }
 protected:
     CChainParams() {}
 
@@ -86,8 +96,12 @@ protected:
     int nDefaultPort;
     long nMaxTipAge;
     uint64_t nPruneAfterHeight;
+    uint64_t nBlockSpacing; // in seconds
     std::vector<CDNSSeedData> vSeeds;
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
+    int nMaxAdminSigners;
+    int nMinAdminSigners;
+    std::vector<CVNAdminSigner> vAdminSigners;
     std::string strNetworkID;
     CBlock genesis;
     std::vector<SeedSpec6> vFixedSeeds;

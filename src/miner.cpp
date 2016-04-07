@@ -28,10 +28,29 @@
 #include "init.h"
 #include "wallet/wallet.h"
 #include "base58.h"
+#include "poc.h"
 
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <queue>
+
+#ifdef USE_OPENSC
+#include "pkcs11/pkcs11.h"
+
+extern "C" CK_RV C_UnloadModule(void *module);
+extern "C" void *C_LoadModule(const char *mspec, CK_FUNCTION_LIST_PTR_PTR funcs);
+static void *module = NULL;
+static CK_FUNCTION_LIST_PTR p11 = NULL;
+
+#if defined(WIN32)
+static std::string defaultPkcs11ModulePath = "";
+#elif defined(MAC_OSX)
+static std::string defaultPkcs11ModulePath = "";
+#else
+static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so";
+#endif
+
+#endif
 
 CKey GetTMPKey()
 {
@@ -361,6 +380,30 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
 
     unsigned int nExtraNonce = 0;
 
+#ifdef USE_OPENSC
+    CK_RV rv;
+    std::string pkcs11module = GetArg("-pkcs11module", defaultPkcs11ModulePath);
+    static const char * opt_module = pkcs11module.c_str();
+
+    module = C_LoadModule(opt_module, &p11);
+    if (module == NULL) {
+        LogPrintf("Failed to load pkcs11 module\n");
+        return;
+    }
+
+    rv = p11->C_Initialize(NULL);
+    if (rv == CKR_CRYPTOKI_ALREADY_INITIALIZED) {
+        LogPrintf("library has already been initialized\n");
+    } else if (rv != CKR_OK) {
+        LogPrintf("error initializing pkcs11 framework\n");
+        return;
+    }
+
+    LogPrintf("OpenSC successfully initialized using pkcs11 module at %s\n", opt_module);
+#endif
+
+    RunCVNSignerThread(chainparams);
+
     boost::shared_ptr<CReserveScript> coinbaseScript;
     GetMainSignals().ScriptForMining(coinbaseScript);
 
@@ -413,18 +456,6 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
 
             pblock->nCreatorId = 1;
 
-            CCVNVote signedVote1(1, 1, pindexBestHeader->nHeight + 1);
-            if (!key1.SignCompact(signedVote1.GetHash(), signedVote1.vSignature))
-            	printf("error signing vote1\n");
-
-            pblock->vVotes.push_back(signedVote1);
-
-            CCVNVote signedVote2(2, 1, pindexBestHeader->nHeight + 1);
-            if (!key2.SignCompact(signedVote2.GetHash(), signedVote2.vSignature))
-            	printf("error signing vote2\n");
-
-            pblock->vVotes.push_back(signedVote2);
-
             LogPrintf("Running CertifiedValidationNode with %u transactions in block (%u bytes)\n", pblock->vtx.size(),
                 ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION));
 
@@ -435,7 +466,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
             uint256 hash;
             int cnt = 0;
             while (true) {
-            	MilliSleep(5000);
+            	MilliSleep(10000);
             	// Check if something found
                 if (!(++cnt % 2)) //ScanHash(pblock, nNonce, &hash)
                 {
@@ -443,7 +474,23 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
 					SetThreadPriority(THREAD_PRIORITY_NORMAL);
 					LogPrintf("CertifiedValidationNode:\n");
 					cnt = 0;
-					LogPrintf("creating next block\n  hash: %s  \nnodeid: %u\n", pblock->GetHash().ToString(), pblock->nCreatorId);
+
+		            CBlockSignature signature1(1);
+		            if (!key1.SignCompact(pblock->GetUnsignedHash(), signature1.vSignature))
+		                printf("error creating signature 1\n");
+
+		            pblock->vSignatures.push_back(signature1);
+
+		            CBlockSignature signature2(2);
+		            if (!key2.SignCompact(pblock->GetUnsignedHash(), signature2.vSignature))
+		                printf("error creating signature 1\n");
+
+		            pblock->vSignatures.push_back(signature2);
+
+					pblock->nHeight = pindexPrev->nHeight + 1;
+
+					LogPrintf("creating next block\n  hash: %s  \nnodeid: %u\n  \nheight: %u\n", pblock->GetHash().ToString(), pblock->nCreatorId, pblock->nHeight);
+
 					ProcessBlockFound(pblock, chainparams);
 					SetThreadPriority(THREAD_PRIORITY_LOWEST);
 					coinbaseScript->KeepScript();

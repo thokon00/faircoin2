@@ -143,7 +143,7 @@ public:
     uint256 hashMerkleRoot;
     unsigned int nTime;
     unsigned int nCreatorId;
-    std::vector<CCVNVote> vVotes;
+    std::vector<CBlockSignature> vSignatures;
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     uint32_t nSequenceId;
@@ -167,7 +167,7 @@ public:
         hashMerkleRoot = uint256();
         nTime          = 0;
         nCreatorId     = 0;
-        vVotes.clear();
+        vSignatures.clear();
     }
 
     CBlockIndex()
@@ -183,7 +183,8 @@ public:
         hashMerkleRoot = block.hashMerkleRoot;
         nTime          = block.nTime;
         nCreatorId     = block.nCreatorId;
-        vVotes         = block.vVotes;
+        vSignatures    = block.vSignatures;
+        nHeight        = block.nHeight;
     }
 
     CDiskBlockPos GetBlockPos() const {
@@ -213,7 +214,8 @@ public:
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
         block.nCreatorId     = nCreatorId;
-        block.vVotes         = vVotes;
+        block.vSignatures    = vSignatures;
+        block.nHeight        = nHeight;
         return block;
     }
 
@@ -245,10 +247,11 @@ public:
 
     std::string ToString() const
     {
-        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, merkle=%s, hashBlock=%s, creatorId=%u)",
+        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, merkle=%s, hashBlock=%s, creatorId=%u, signatures=%u)",
             pprev, nHeight, nCreatorId,
             hashMerkleRoot.ToString(),
-            GetBlockHash().ToString());
+            GetBlockHash().ToString(),
+            vSignatures.size());
     }
 
     //! Check whether this block index entry is valid up to the passed validity level.
@@ -319,7 +322,7 @@ public:
         READWRITE(hashMerkleRoot);
         READWRITE(nTime);
         READWRITE(nCreatorId);
-        READWRITE(vVotes);
+        READWRITE(vSignatures);
     }
 
     uint256 GetBlockHash() const
@@ -330,7 +333,8 @@ public:
         block.hashMerkleRoot  = hashMerkleRoot;
         block.nTime           = nTime;
         block.nCreatorId      = nCreatorId;
-        block.vVotes          = vVotes;
+        block.vSignatures     = vSignatures;
+        block.nHeight         = nHeight;
         return block.GetHash();
     }
 

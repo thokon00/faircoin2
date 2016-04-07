@@ -99,15 +99,16 @@ public:
         nDefaultPort = 40404;
         nMaxTipAge = 24 * 60 * 60;
         nPruneAfterHeight = 100000;
+        nBlockSpacing = 1 * 60;
 
         genesis = CreateGenesisBlock(1458643274, 0xC001D00D, 1, 50 * COIN);
-        CCVNVote genesisVote(0xC001D00D, 0xC001D00D, 0);
-        genesis.vVotes.push_back(genesisVote); // genesis vote
+        CBlockSignature genesisSignature(0xC001D00D);
+        genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
 //        printf("main: %s\n", consensus.hashGenesisBlock.ToString().c_str());
 //        printf("genesis block main net:\n%s\n", genesis.ToString().c_str());
-        assert(consensus.hashGenesisBlock == uint256S("0xa2f9d5abafa8b081d2e686d0a5b844df69c1203881a0e4010f4fe960cb7c6607"));
+        assert(consensus.hashGenesisBlock == uint256S("0xb9894936306866e2e5665b4d63703e7cb3f26fa7b1bd86daf0cef865547526ca"));
         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
         vSeeds.push_back(CDNSSeedData("1.fair-coin.org", "faircoin2-seed1.fair-coin.org")); // Thomas König
@@ -129,7 +130,7 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            ( 0, uint256S("0xf623d8b40a6bb0424fc1834b430a938497b521a4277ecf3c9bca89e738667100")),
+            ( 0, uint256S("0xb9894936306866e2e5665b4d63703e7cb3f26fa7b1bd86daf0cef865547526ca")),
             1458643274, // * UNIX timestamp of last checkpoint block
             0,   // * total number of transactions between genesis and last checkpoint
                         //   (the tx=... number in the SetBestChain debug.log lines)
@@ -160,14 +161,15 @@ public:
         nDefaultPort = 41404;
         nMaxTipAge = 0x7fffffff;
         nPruneAfterHeight = 1000;
+        nBlockSpacing = 3 * 60;
 
         genesis = CreateGenesisBlock(1458643274, 0xC001CAFE, 1, 50 * COIN);
-        CCVNVote genesisVote(0xC001CAFE, 0xC001CAFE, 0);
-        genesis.vVotes.push_back(genesisVote); // genesis vote
+        CBlockSignature genesisSignature(0xC001CAFE);
+        genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
-        //printf("test: %s\n", consensus.hashGenesisBlock.ToString().c_str());
-        assert(consensus.hashGenesisBlock == uint256S("0x9721df78563a7e14a025871d4ce7073146ea085ebc0ee2953c9d63847f93bb9d"));
+//        printf("test: %s\n", consensus.hashGenesisBlock.ToString().c_str());
+        assert(consensus.hashGenesisBlock == uint256S("0x61d9f3c05a04e3aaea24466ab27d56ca7c4ee76b6ca0f509f824eb18962b53ce"));
         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
         vFixedSeeds.clear();
@@ -191,7 +193,7 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            ( 0, uint256S("0xf623d8b40a6bb0424fc1834b430a938497b521a4277ecf3c9bca89e738667100")),
+            ( 0, uint256S("0x61d9f3c05a04e3aaea24466ab27d56ca7c4ee76b6ca0f509f824eb18962b53ce")),
             1458643274,
             1488,
             300
@@ -222,14 +224,15 @@ public:
         nMaxTipAge = 24 * 60 * 60;
         nDefaultPort = 42404;
         nPruneAfterHeight = 1000;
+        nBlockSpacing = 3 * 60;
 
         genesis = CreateGenesisBlock(1458643274, 0xCAFEBABE, 1, 50 * COIN);
-        CCVNVote genesisVote(0xCAFEBABE, 0xCAFEBABE, 0);
-        genesis.vVotes.push_back(genesisVote); // genesis vote
+        CBlockSignature genesisSignature(0xCAFEBABE);
+        genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
-        //printf("reg: %s\n", consensus.hashGenesisBlock.ToString().c_str());
-        assert(consensus.hashGenesisBlock == uint256S("0x83efb991e9934dbf9a9a35a0daa1e3d4b2e275e2c9137c51888488ff828e984f"));
+//        printf("reg: %s\n", consensus.hashGenesisBlock.ToString().c_str());
+        assert(consensus.hashGenesisBlock == uint256S("0x5daec43cedbd536e7bd5f8a9112eb8c76fd11a275300ffa24e429dcfa6f36a28"));
         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
         vFixedSeeds.clear(); //! Regtest mode doesn't have any fixed seeds.
@@ -243,7 +246,7 @@ public:
 
         checkpointData = (CCheckpointData){
             boost::assign::map_list_of
-            ( 0, uint256S("0xf623d8b40a6bb0424fc1834b430a938497b521a4277ecf3c9bca89e738667100")),
+            ( 0, uint256S("0x5daec43cedbd536e7bd5f8a9112eb8c76fd11a275300ffa24e429dcfa6f36a28")),
             0,
             0,
             0

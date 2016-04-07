@@ -19,6 +19,14 @@ $(LIBLEVELDB) $(LIBMEMENV):
           OPT="$(AM_CXXFLAGS) $(PIE_FLAGS) $(CXXFLAGS) $(AM_CPPFLAGS) $(CPPFLAGS) -D__STDC_LIMIT_MACROS"
 endif
 
+if USE_OPENSC
+OPENSC_LIBS=$(USE_OPENSC)/src/common/libpkcs11.la $(USE_OPENSC)/src/common/libscdl.la
+OPENSC_CFLAGS=-I$(USE_OPENSC)/src
+else
+OPENSC_LIBS=
+OPENSC_CFLAGS=
+endif
+
 BITCOIN_CONFIG_INCLUDES=-I$(builddir)/config
 BITCOIN_INCLUDES=-I$(builddir) -I$(builddir)/obj $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
 
@@ -105,6 +113,7 @@ BITCOIN_CORE_H = \
   consensus/validation.h \
   core_io.h \
   core_memusage.h \
+  cvn.h \
   hash.h \
   httprpc.h \
   httpserver.h \
@@ -127,7 +136,6 @@ BITCOIN_CORE_H = \
   prevector.h \
   primitives/block.h \
   primitives/transaction.h \
-  primitives/vote.h \
   protocol.h \
   pubkey.h \
   random.h \
@@ -182,7 +190,7 @@ obj/build.h: FORCE
 libbitcoin_util_a-clientversion.$(OBJEXT): obj/build.h
 
 # server: shared between bitcoind and bitcoin-qt
-libbitcoin_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(MINIUPNPC_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
+libbitcoin_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(MINIUPNPC_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS) $(OPENSC_CFLAGS)
 libbitcoin_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_server_a_SOURCES = \
   addrman.cpp \
@@ -190,6 +198,7 @@ libbitcoin_server_a_SOURCES = \
   bloom.cpp \
   chain.cpp \
   checkpoints.cpp \
+  cvn.cpp \
   httprpc.cpp \
   httpserver.cpp \
   init.cpp \
@@ -280,7 +289,6 @@ libbitcoin_common_a_SOURCES = \
   netbase.cpp \
   primitives/block.cpp \
   primitives/transaction.cpp \
-  primitives/vote.cpp \
   protocol.cpp \
   pubkey.cpp \
   scheduler.cpp \
@@ -354,6 +362,10 @@ endif
 
 if ENABLE_WALLET
 bitcoind_LDADD += libbitcoin_wallet.a
+endif
+
+if USE_OPENSC
+bitcoind_LDADD += $(OPENSC_LIBS)
 endif
 
 bitcoind_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS)

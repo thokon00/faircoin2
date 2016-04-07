@@ -7,10 +7,14 @@
 
 #include "consensus/params.h"
 #include "primitives/block.h"
+#include "chainparams.h"
 
 #include <stdint.h>
 
 /** Check whether a block hash satisfies the proof-of-cooperation requirements */
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&);
+
+/** strart the CVN voter thread */
+void RunCVNSignerThread(const CChainParams& chainparams);
 
 #endif // BITCOIN_POC_H
