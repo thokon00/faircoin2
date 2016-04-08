@@ -54,15 +54,15 @@ static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-p
 
 CKey GetTMPKey()
 {
-	boost::shared_ptr<CReserveKey> rKey(new CReserveKey(pwalletMain));
+    boost::shared_ptr<CReserveKey> rKey(new CReserveKey(pwalletMain));
     CPubKey pubkey;
     if (!rKey->GetReservedKey(pubkey))
-    	printf("error could not get pubkey\n");
+        printf("error could not get pubkey\n");
 
     CKey key;
 
     if (!pwalletMain->GetKey(pubkey.GetID(), key))
-    	printf("error could not get key\n");
+        printf("error could not get key\n");
 
     return key;
 }
@@ -466,40 +466,40 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
             uint256 hash;
             int cnt = 0;
             while (true) {
-            	MilliSleep(10000);
-            	// Check if something found
+                MilliSleep(10000000000);
+                // Check if something found
                 if (!(++cnt % 2)) //ScanHash(pblock, nNonce, &hash)
                 {
-                	// Found a solution
-					SetThreadPriority(THREAD_PRIORITY_NORMAL);
-					LogPrintf("CertifiedValidationNode:\n");
-					cnt = 0;
+                    // Found a solution
+                    SetThreadPriority(THREAD_PRIORITY_NORMAL);
+                    LogPrintf("CertifiedValidationNode:\n");
+                    cnt = 0;
 
-		            CBlockSignature signature1(1);
-		            if (!key1.SignCompact(pblock->GetUnsignedHash(), signature1.vSignature))
-		                printf("error creating signature 1\n");
+                    CBlockSignature signature1(1);
+                    if (!key1.SignCompact(pblock->GetUnsignedHash(), signature1.vSignature))
+                        printf("error creating signature 1\n");
 
-		            pblock->vSignatures.push_back(signature1);
+                    pblock->vSignatures.push_back(signature1);
 
-		            CBlockSignature signature2(2);
-		            if (!key2.SignCompact(pblock->GetUnsignedHash(), signature2.vSignature))
-		                printf("error creating signature 1\n");
+                    CBlockSignature signature2(2);
+                    if (!key2.SignCompact(pblock->GetUnsignedHash(), signature2.vSignature))
+                        printf("error creating signature 1\n");
 
-		            pblock->vSignatures.push_back(signature2);
+                    pblock->vSignatures.push_back(signature2);
 
-					pblock->nHeight = pindexPrev->nHeight + 1;
+                    pblock->nHeight = pindexPrev->nHeight + 1;
 
-					LogPrintf("creating next block\n  hash: %s  \nnodeid: %u\n  \nheight: %u\n", pblock->GetHash().ToString(), pblock->nCreatorId, pblock->nHeight);
+                    LogPrintf("creating next block\n  hash: %s  \nnodeid: %u\n  \nheight: %u\n", pblock->GetHash().ToString(), pblock->nCreatorId, pblock->nHeight);
 
-					ProcessBlockFound(pblock, chainparams);
-					SetThreadPriority(THREAD_PRIORITY_LOWEST);
-					coinbaseScript->KeepScript();
+                    ProcessBlockFound(pblock, chainparams);
+                    SetThreadPriority(THREAD_PRIORITY_LOWEST);
+                    coinbaseScript->KeepScript();
 
-					// In regression test mode, stop mining after a block is found.
-					if (chainparams.MineBlocksOnDemand())
-						throw boost::thread_interrupted();
+                    // In regression test mode, stop mining after a block is found.
+                    if (chainparams.MineBlocksOnDemand())
+                        throw boost::thread_interrupted();
 
-					break;
+                    break;
                 }
 
                 // Check for stop or if block needs to be rebuilt

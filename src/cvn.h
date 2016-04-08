@@ -5,7 +5,6 @@
 #ifndef FAIRCOIN_CVN_H
 #define FAIRCOIN_CVN_H
 
-#include "chainparams.h"
 #include "net.h"
 #include "scheduler.h"
 
@@ -16,31 +15,98 @@ void DumpCVNs();
 void ReadCVNs(boost::thread_group& threadGroup, CScheduler& scheduler);
 
 class CCvnMan;
+class CChainParams;
 extern CCvnMan cvnman;
 
 // Dump CVNs to cvn.dat every hour (3600s)
 #define DUMP_CVNS_INTERVAL 3600
 
-class CCvnInfo
-{
+class CCvnAdminSigner {
 public:
+    uint32_t nSignerId;
+    std::vector<unsigned char> vPubKey;
 
-	uint32_t nNodeId;
-	std::vector<unsigned char> vPubKey;
-	//std::vector<unsigned char> vCertificate;
-
-	CCvnInfo()
+    CCvnAdminSigner()
     {
         SetNull();
     }
 
-	CCvnInfo(const uint32_t nNodeId, const std::vector<unsigned char> vPubKey)
-	{
-	    this->nNodeId = nNodeId;
-	    this->vPubKey = vPubKey;
-	}
+    CCvnAdminSigner(const uint32_t &nSignerId, const std::vector<unsigned char> &vPubKey)
+    {
+        this->nSignerId = nSignerId;
+        this->vPubKey = vPubKey;
+    }
 
-	ADD_SERIALIZE_METHODS;
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(nSignerId);
+        READWRITE(vPubKey);
+    }
+
+    void SetNull()
+    {
+        nSignerId = 0;
+        vPubKey.clear();
+    }
+
+    bool IsValid() const;
+};
+
+class CCvnAdminSignature {
+public:
+    uint32_t nSignerId;
+    std::vector<unsigned char> vSignature;
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(nSignerId);
+        READWRITE(vSignature);
+    }
+
+    CCvnAdminSignature()
+    {
+        SetNull();
+    }
+
+    CCvnAdminSignature(const uint32_t &nSignerId, const std::vector<unsigned char> &vSignature)
+    {
+        this->nSignerId = nSignerId;
+        this->vSignature = vSignature;
+    }
+
+    void SetNull()
+    {
+        nSignerId = 0;
+        vSignature.clear();
+    }
+
+    bool IsValid(const CChainParams& params, const uint256 hashTmp) const;
+};
+
+class CCvnInfo
+{
+public:
+
+    uint32_t nNodeId;
+    std::vector<unsigned char> vPubKey;
+    //std::vector<unsigned char> vCertificate;
+
+    CCvnInfo()
+    {
+        SetNull();
+    }
+
+    CCvnInfo(const uint32_t nNodeId, const std::vector<unsigned char> vPubKey)
+    {
+        this->nNodeId = nNodeId;
+        this->vPubKey = vPubKey;
+    }
+
+    ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
@@ -50,8 +116,8 @@ public:
 
     void SetNull()
     {
-    	nNodeId = 0;
-    	vPubKey.clear();
+        nNodeId = 0;
+        vPubKey.clear();
     }
 
     uint256 GetHash() const;
@@ -60,14 +126,14 @@ public:
 class CSignedCvnInfo : public CCvnInfo
 {
 public:
-	std::vector< std::vector<unsigned char> > vSignatures;
+    std::vector<CCvnAdminSignature> vSignatures;
 
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-    	READWRITE(*(CCvnInfo*)this);
-    	READWRITE(vSignatures);
+        READWRITE(*(CCvnInfo*)this);
+        READWRITE(vSignatures);
     }
 
     CSignedCvnInfo()
@@ -83,15 +149,18 @@ public:
 
     void SetNull()
     {
-    	CCvnInfo::SetNull();
-    	vSignatures.clear();
+        CCvnInfo::SetNull();
+        vSignatures.clear();
     }
 
     //! Relay an entry
     bool RelayTo(CNode* pnode) const;
 
+    //! Relay removal of an entry
+    bool RelayRemoveTo(CNode* pnode) const;
+
     //! check the integrity of a received CVNInfo
-    bool CheckCvnInfo(const CChainParams& params) const;
+    bool CheckCvnInfo(const CChainParams& params, const bool fRemove) const;
 
     //! check the signatures
     bool CheckSignatures(const CChainParams& params) const;
@@ -112,9 +181,9 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-    	LOCK(cs);
+        LOCK(cs);
 
-    	READWRITE(mapCvns);
+        READWRITE(mapCvns);
     }
 
     //! Find an entry.
@@ -127,9 +196,9 @@ public:
     void Delete(const uint32_t& nodeId);
 
     size_t size() const
-	{
-		return mapCvns.size();
-	}
+    {
+        return mapCvns.size();
+    }
 
     void Clear()
     {

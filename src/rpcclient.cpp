@@ -103,7 +103,10 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "setban", 2 },
     { "setban", 3 },
     { "addcvn", 0 },
+    { "addcvn", 2 },
     { "removecvn", 0 },
+    { "removecvn", 2 },
+    { "createadminsig", 1 },
 };
 
 class CRPCConvertTable

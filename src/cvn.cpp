@@ -36,7 +36,7 @@ void ReadCVNs(boost::thread_group& threadGroup, CScheduler& scheduler)
     // Load addresses for cvn.dat
     int64_t nStart = GetTimeMillis();
     {
-    	CCvnDB adb;
+        CCvnDB adb;
         if (!adb.Read(cvnman))
             LogPrintf("Invalid or missing cvn.dat recreating\n");
     }
@@ -59,18 +59,23 @@ CCvnInfo* CCvnMan::Find(const uint32_t& nodeId)
 void CCvnMan::Add(const CCvnInfo &info)
 {
     LOCK(cs);
+
+    cvnman.mapCvns.insert(std::pair<uint32_t, CCvnInfo>(info.nNodeId, info));
+    LogPrint("cvnman", "Added CVN with node ID 0x%08x\n", info.nNodeId);
 }
 
 void CCvnMan::Delete(const uint32_t& nodeId)
 {
     LOCK(cs);
+
+    cvnman.mapCvns.erase(nodeId);
+    LogPrint("cvnman", "Removed CVN with node ID 0x%08x\n", nodeId);
 }
 
 uint256 CCvnInfo::GetHash() const
 {
     return SerializeHash(*this);
 }
-
 
 //! Relay an entry
 bool CSignedCvnInfo::RelayTo(CNode* pnode) const
@@ -87,43 +92,58 @@ bool CSignedCvnInfo::RelayTo(CNode* pnode) const
     return false;
 }
 
+//! Relay removal of an entry
+bool CSignedCvnInfo::RelayRemoveTo(CNode* pnode) const
+{
+    // don't relay to nodes which haven't sent their version message
+    if (pnode->nVersion == 0)
+        return false;
+    // returns >0 if it was contained in the set
+    if (pnode->setKnownCVNs.erase(nNodeId))
+    {
+        pnode->PushMessage(NetMsgType::REMOVECVN, *this);
+        return true;
+    }
+    return false;
+}
+
 bool CSignedCvnInfo::CheckSignatures(const CChainParams& params) const
 {
-    if ((int)vSignatures.size() < params.MinAdminSigners())
+    if (vSignatures.size() < (uint32_t)params.MinAdminSigners())
         return error("CSignedCVNInfo::CheckSignatures(): not enough signers %d/%d", params.MinAdminSigners(), params.MaxAdminSigners());
 
     uint256 hashTmp = GetHash();
 
-    std::vector<CVNAdminSigner> vAdminSigners = params.GetAdminSigners();
-
+    int i = 1;
     // verify stored checksum matches input data
-    for(unsigned int i = 0 ; i < vSignatures.size() ; i++)
-	{
-        CVNAdminSigner signer = vAdminSigners[i];
-        CPubKey key(signer.signature);
-        if (!key.Verify(Hash(hashTmp.begin(), hashTmp.end()), vSignatures[i]))
-            return error("CSignedCVNInfo::CheckSignatures(): verify signature #%d failed", i + 1);
-	}
+    BOOST_FOREACH (CCvnAdminSignature sig, vSignatures)
+    {
+        if (!sig.IsValid(params, hashTmp))
+            return error("CSignedCVNInfo::CheckSignatures(): verify signature #%d failed", i);
+
+        i++;
+    }
 
     return true;
 }
 
-bool CSignedCvnInfo::CheckCvnInfo(const CChainParams& params) const
+bool CSignedCvnInfo::CheckCvnInfo(const CChainParams& params, const bool fRemove) const
 {
     if (!CheckSignatures(params))
         return false;
 
-    // Add to mapCvns
-    cvnman.Add((CCvnInfo&) *this);
+    if (fRemove)
+        cvnman.Delete(nNodeId);
+    else
+        cvnman.Add((CCvnInfo&) *this);
 
-    LogPrint("cvn", "accepted new certified validation node 0x%08x\n", nNodeId);
+    LogPrint("cvn", "accepted %s certified validation node 0x%08x\n", fRemove ? "removal of" : "new", nNodeId);
     return true;
 }
 
-
 CCvnDB::CCvnDB()
 {
-	pathCvns = GetDataDir() / "cvn.dat";
+    pathCvns = GetDataDir() / "cvn.dat";
 }
 
 bool CCvnDB::Write(const CCvnMan& cvns)
@@ -216,4 +236,12 @@ bool CCvnDB::Read(CCvnMan& addr)
     }
 
     return true;
+}
+
+bool CCvnAdminSignature::IsValid(const CChainParams& params, const uint256 hashTmp) const
+{
+    CCvnAdminSigner signer = params.GetAdminSigners()[nSignerId - 1];
+    CPubKey key(signer.vPubKey);
+
+    return key.Verify(hashTmp, vSignature);
 }

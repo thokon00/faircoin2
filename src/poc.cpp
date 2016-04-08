@@ -38,7 +38,7 @@ void static CCVNSignerThread(const CChainParams& chainparams)
          *
          */
         while (true) {
-            MilliSleep(2000);
+            MilliSleep(2000000000);
 
             int64_t adjustedTime = GetAdjustedTime();
             int64_t lastBlockTime = pindexBestHeader->GetBlockTime();

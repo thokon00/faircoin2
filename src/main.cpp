@@ -2389,7 +2389,7 @@ static int64_t nTimePostConnect = 0;
  */
 bool static ConnectTip(CValidationState& state, const CChainParams& chainparams, CBlockIndex* pindexNew, const CBlock* pblock)
 {
-	assert(pindexNew->pprev == chainActive.Tip());
+    assert(pindexNew->pprev == chainActive.Tip());
     // Read block from disk.
     int64_t nTime1 = GetTimeMicros();
     CBlock block;
@@ -2520,7 +2520,7 @@ static void PruneBlockIndexCandidates() {
  */
 static bool ActivateBestChainStep(CValidationState& state, const CChainParams& chainparams, CBlockIndex* pindexMostWork, const CBlock* pblock)
 {
-	AssertLockHeld(cs_main);
+    AssertLockHeld(cs_main);
     bool fInvalidFound = false;
     const CBlockIndex *pindexOldTip = chainActive.Tip();
     const CBlockIndex *pindexFork = chainActive.FindFork(pindexMostWork);
@@ -5184,37 +5184,50 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
     else if (strCommand == NetMsgType::ADDCVN)
     {
-    	CSignedCvnInfo cvnInfo;
+        CSignedCvnInfo cvnInfo;
         vRecv >> cvnInfo;
 
         if (pfrom->setKnownCVNs.count(cvnInfo.nNodeId) == 0)
         {
-            if (cvnInfo.CheckCvnInfo(chainparams))
+            if (cvnInfo.CheckCvnInfo(chainparams, false))
             {
                 // Relay
                 pfrom->setKnownCVNs.insert(cvnInfo.nNodeId);
                 {
                     LOCK(cs_vNodes);
                     BOOST_FOREACH(CNode* pnode, vNodes)
-                    	cvnInfo.RelayTo(pnode);
+                        cvnInfo.RelayTo(pnode);
                 }
             }
             else {
-                // Small DoS penalty so peers that send us lots of
-                // duplicate/expired/invalid-signature/whatever alerts
-                // eventually get banned.
-                // This isn't a Misbehaving(100) (immediate ban) because the
-                // peer might be an older or different implementation with
-                // a different signature key, etc.
-                Misbehaving(pfrom->GetId(), 10);
+                LogPrint("cvn", "received an invalid add CVN message\n");
+                Misbehaving(pfrom->GetId(), 50);
             }
         }
-
     }
 
     else if (strCommand == NetMsgType::REMOVECVN)
     {
+        CSignedCvnInfo cvnInfo;
+        vRecv >> cvnInfo;
 
+        if (pfrom->setKnownCVNs.count(cvnInfo.nNodeId))
+        {
+            if (cvnInfo.CheckCvnInfo(chainparams, true))
+            {
+                // Relay
+                pfrom->setKnownCVNs.erase(cvnInfo.nNodeId);
+                {
+                    LOCK(cs_vNodes);
+                    BOOST_FOREACH(CNode* pnode, vNodes)
+                        cvnInfo.RelayRemoveTo(pnode);
+                }
+            }
+            else {
+                LogPrint("cvn", "received an invalid remove CVN message\n");
+                Misbehaving(pfrom->GetId(), 50);
+            }
+        }
     }
 
     else

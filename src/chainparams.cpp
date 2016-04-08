@@ -76,6 +76,13 @@ std::string GetHex(std::vector<unsigned char> data)
     return std::string(psz, psz + sizeof(data) * 2);
 }
 
+bool CCvnAdminSigner::IsValid() const
+{
+	CPubKey pubKey(vPubKey);
+
+	return pubKey.IsFullyValid();
+}
+
 class CMainParams : public CChainParams {
 public:
     CMainParams() {
@@ -95,11 +102,25 @@ public:
         pchMessageStart[1] = 0xbf;
         pchMessageStart[2] = 0xb5;
         pchMessageStart[3] = 0xda;
-        vAlertPubKey = ParseHex("04cc5bbaa3882e84e9ddcf1fb6409f7dcbe11fc50ff4cd662b1f8ea5598e7b4a429ed2685ea193fd4926ffd3d63c99c912a99f41be1d7b84f64518bc8aea740fd4");
+        vAlertPubKey = ParseHex("04b06af4982ca3edc2c040cc2cde05fa5b33264af4a98712ceb29d196e7390b4753eb7264dc5f383f29a44d63e70dbbd8d9e46a0a60f80ef62fd1911291ec388e4");
         nDefaultPort = 40404;
         nMaxTipAge = 24 * 60 * 60;
         nPruneAfterHeight = 100000;
         nBlockSpacing = 1 * 60;
+
+        nMaxAdminSigners = 5;
+        nMinAdminSigners = 3;
+        vAdminSigners.clear();
+        CCvnAdminSigner s1(1l, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+        vAdminSigners.push_back(s1); assert(s1.IsValid());
+        CCvnAdminSigner s2(2l, ParseHex("04a88247e9d3dcb6e59fa75f5f35d365250d0bf6f3937c2f86cc73de097e5733002327bfaea4e2246ec20fa2a65a935b02c932e5d2cf799c43b76b85941d2a77a2"));
+        vAdminSigners.push_back(s2); assert(s2.IsValid());
+        CCvnAdminSigner s3(3l, ParseHex("0467d966f864645353ab648315e49c274f0ebc133744463d1b77f6c07821d90383a9a79211f53460e8c946ecc35948d1610ebb754e6cf0473ddcf0668c4a58ee51"));
+        vAdminSigners.push_back(s3); assert(s3.IsValid());
+        CCvnAdminSigner s4(4l, ParseHex("041a38cd83bfa1a16df0333da96d2afdb65e9c65ef85609f0820a0cef33fd8f46ca9d28d1445f32aa4b8142cd80b0ae94ea3c35be4c16b756a3fc930ad9c07c85a"));
+        vAdminSigners.push_back(s4); assert(s4.IsValid());
+        CCvnAdminSigner s5(5l, ParseHex("043ae4e93154d679c235a08c82fabf08ccc990161015e27e0564f338a94f10d07dce7b4f54167266c74ed06dea2599c15a767f20a333b1e40a67d1f7abfb4425ac"));
+        vAdminSigners.push_back(s5); assert(s5.IsValid());
 
         genesis = CreateGenesisBlock(1458643274, 0xC001D00D, 1, 50 * COIN);
         CBlockSignature genesisSignature(0xC001D00D);

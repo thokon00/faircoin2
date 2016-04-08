@@ -10,18 +10,13 @@
 #include "consensus/params.h"
 #include "primitives/block.h"
 #include "protocol.h"
+#include "cvn.h"
 
 #include <vector>
 
 struct CDNSSeedData {
     std::string name, host;
     CDNSSeedData(const std::string &strName, const std::string &strHost) : name(strName), host(strHost) {}
-};
-
-struct CVNAdminSigner {
-    uint32_t signerId;
-    std::vector<unsigned char> signature;
-    CVNAdminSigner(const uint32_t &nSignerId, const std::vector<unsigned char> &vSignature) : signerId(nSignerId), signature(vSignature) {}
 };
 
 struct SeedSpec6 {
@@ -85,7 +80,7 @@ public:
     const CCheckpointData& Checkpoints() const { return checkpointData; }
     int MaxAdminSigners() const { return nMaxAdminSigners; }
     int MinAdminSigners() const { return nMinAdminSigners; }
-    const std::vector<CVNAdminSigner> GetAdminSigners() const { return vAdminSigners; }
+    const std::vector<CCvnAdminSigner> GetAdminSigners() const { return vAdminSigners; }
 protected:
     CChainParams() {}
 
@@ -101,9 +96,10 @@ protected:
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
     int nMaxAdminSigners;
     int nMinAdminSigners;
-    std::vector<CVNAdminSigner> vAdminSigners;
+    std::vector<CCvnAdminSigner> vAdminSigners;
     std::string strNetworkID;
     CBlock genesis;
+    CCvnAdminSigner sTest;
     std::vector<SeedSpec6> vFixedSeeds;
     bool fMiningRequiresPeers;
     bool fDefaultConsistencyChecks;
