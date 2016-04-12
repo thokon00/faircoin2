@@ -33,6 +33,7 @@
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <queue>
+#include <map>
 
 #ifdef USE_OPENSC
 #include "pkcs11/pkcs11.h"
@@ -51,6 +52,9 @@ static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-p
 #endif
 
 #endif
+
+CCriticalSection cs_mapCVNs;
+std::map<uint32_t, CCvnInfo> mapCVNs;
 
 CKey GetTMPKey()
 {
@@ -475,13 +479,13 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
                     LogPrintf("CertifiedValidationNode:\n");
                     cnt = 0;
 
-                    CBlockSignature signature1(1);
+                    CBlockSignature signature1(1l);
                     if (!key1.SignCompact(pblock->GetUnsignedHash(), signature1.vSignature))
                         printf("error creating signature 1\n");
 
                     pblock->vSignatures.push_back(signature1);
 
-                    CBlockSignature signature2(2);
+                    CBlockSignature signature2(2l);
                     if (!key2.SignCompact(pblock->GetUnsignedHash(), signature2.vSignature))
                         printf("error creating signature 1\n");
 

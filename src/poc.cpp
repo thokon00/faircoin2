@@ -13,16 +13,14 @@
 
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&)
 {
-    LogPrintf("CheckProofOfCooperation : impelement checks\n");
+    uint256 unsignedHash = block.GetUnsignedHash();
 
-//    BOOST_FOREACH(CCVNVote vote, block.vVotes) {
-//    	if (vote.nCreatorId != block.nCreatorId)
-//    		return error("%s: vote creator id %u does not match block id %u (%s)", __func__, vote.nCreatorId, block.nCreatorId, block.GetHash().ToString());
-
-        //TODO: use prevHash instead of nHeight
-//    	if (vote.nHeight != (uint32_t)pindexBestHeader->nHeight)
-//    		return error("%s: vote height %u does not match best height %u (%s)", __func__, vote.nHeight, pindexBestHeader->nHeight, block.GetHash().ToString());
-//    }
+    LogPrint("cvn", "CheckProofOfCooperation : checking signatures\n");
+    uint32_t i = 0;
+    BOOST_FOREACH(CBlockSignature signature, block.vSignatures) {
+        if (!block.vSignatures[i++].IsValid(Params(), unsignedHash, block.HasCvnInfo()))
+            return error("signature %u : %s is invalid\n", i, HexStr(block.vSignatures[i - 1].vSignature));
+    }
 
     return true;
 }
@@ -43,8 +41,8 @@ void static CCVNSignerThread(const CChainParams& chainparams)
             int64_t adjustedTime = GetAdjustedTime();
             int64_t lastBlockTime = pindexBestHeader->GetBlockTime();
 
-            if ((int64_t)(lastBlockTime + chainparams.BlockSpacing() - 10) > adjustedTime)
-                continue;
+//            if ((int64_t)(lastBlockTime + chainparams.BlockSpacing() - 10) > adjustedTime)
+//                continue;
 
             LogPrintf("CVN signer assuming Phase 2\n");
 

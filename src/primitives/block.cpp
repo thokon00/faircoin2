@@ -11,6 +11,8 @@
 #include "tinyformat.h"
 #include "utilstrencodings.h"
 #include "crypto/common.h"
+#include "pubkey.h"
+#include "chainparams.h"
 
 uint256 CUnsignedBlockHeader::GetUnsignedHash() const
 {
@@ -20,6 +22,38 @@ uint256 CUnsignedBlockHeader::GetUnsignedHash() const
 uint256 CBlockHeader::GetHash() const
 {
     return SerializeHash(*this);
+}
+
+uint256 CCvnInfo::GetHash() const
+{
+    return SerializeHash(*this);
+}
+
+uint256 CBlock::HashCVNs() const
+{
+	return SerializeHash(this->vCvns);
+}
+
+uint256 CDynamicChainParams::GetHash() const
+{
+    return SerializeHash(*this);
+}
+
+bool CBlockSignature::IsValid(const CChainParams& params, const uint256 hashTmp, const bool isCvnBlock) const
+{
+    CPubKey pubKey;
+
+    if (isCvnBlock)
+    {
+//        CCvnInfo signer = params.GetCvnSigners()[nSignerId - 1];
+//        pubKey = CPubKey(signer.vPubKey);
+    }
+    else
+    {
+        throw "TBI";
+    }
+
+    return pubKey.Verify(hashTmp, vSignature);
 }
 
 std::string CBlockSignature::GetSignatureHex() const
@@ -45,10 +79,18 @@ std::string CBlockSignature::ToString() const
 
 std::string CBlock::ToString() const
 {
-    std::stringstream s;
-    s << strprintf("CBlock(hash=%s(%u), ver=%d, hashPrevBlock=%s, unsignedHash=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=%u, signatures=%u, vtx=%u)\n",
-        GetHash().ToString(), nHeight,
-        nVersion,
+    std::stringstream s, payload;
+
+    if (HasTx())
+        payload << "tx";
+    if (HasCvnInfo())
+        payload << strprintf("%scvninfo", (s.tellp() > 0) ? "," : "");
+    if (HasChainParameters())
+        payload << strprintf("%sparams", (s.tellp() > 0) ? "," : "");
+
+    s << strprintf("CBlock(%u)(hash=%s, ver=%d, payload=%s, hashPrevBlock=%s, unsignedHash=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=%u, signatures=%u, vtx=%u)\n",
+        nHeight, GetHash().ToString(),
+        nVersion & 0xff, payload.str(),
         hashPrevBlock.ToString(),
         GetUnsignedHash().ToString(),
         hashMerkleRoot.ToString(),
@@ -58,9 +100,20 @@ std::string CBlock::ToString() const
     {
         s << "  " << vSignatures[i].ToString() << "\n";
     }
-    for (unsigned int i = 0; i < vtx.size(); i++)
+    if (HasCvnInfo())
     {
-        s << "  " << vtx[i].ToString() << "\n";
+        s << strprintf("TBI(%u): print out CVN information\n", nVersion);
+    }
+    if (HasChainParameters())
+    {
+        s << strprintf("TBI(%u): print out dynamic chain parameter information\n", nVersion);
+    }
+    if (HasTx())
+    {
+        for (unsigned int i = 0; i < vtx.size(); i++)
+        {
+            s << "  " << vtx[i].ToString() << "\n";
+        }
     }
     return s.str();
 }

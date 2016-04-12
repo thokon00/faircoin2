@@ -10,9 +10,10 @@
 #include "consensus/params.h"
 #include "primitives/block.h"
 #include "protocol.h"
-#include "cvn.h"
 
 #include <vector>
+
+extern CDynamicChainParams dynParams;
 
 struct CDNSSeedData {
     std::string name, host;
@@ -67,7 +68,6 @@ public:
     bool RequireStandard() const { return fRequireStandard; }
     int64_t MaxTipAge() const { return nMaxTipAge; }
     uint64_t PruneAfterHeight() const { return nPruneAfterHeight; }
-    uint64_t BlockSpacing() const { return nBlockSpacing; }
     /** Make miner stop after a block is found. In RPC, don't return until nGenProcLimit blocks are generated */
     bool MineBlocksOnDemand() const { return fMineBlocksOnDemand; }
     /** In the future use NetworkIDString() for RPC fields */
@@ -78,9 +78,6 @@ public:
     const std::vector<unsigned char>& Base58Prefix(Base58Type type) const { return base58Prefixes[type]; }
     const std::vector<SeedSpec6>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
-    int MaxAdminSigners() const { return nMaxAdminSigners; }
-    int MinAdminSigners() const { return nMinAdminSigners; }
-    const std::vector<CCvnAdminSigner> GetAdminSigners() const { return vAdminSigners; }
 protected:
     CChainParams() {}
 
@@ -91,15 +88,10 @@ protected:
     int nDefaultPort;
     long nMaxTipAge;
     uint64_t nPruneAfterHeight;
-    uint64_t nBlockSpacing; // in seconds
     std::vector<CDNSSeedData> vSeeds;
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
-    int nMaxAdminSigners;
-    int nMinAdminSigners;
-    std::vector<CCvnAdminSigner> vAdminSigners;
     std::string strNetworkID;
     CBlock genesis;
-    CCvnAdminSigner sTest;
     std::vector<SeedSpec6> vFixedSeeds;
     bool fMiningRequiresPeers;
     bool fDefaultConsistencyChecks;

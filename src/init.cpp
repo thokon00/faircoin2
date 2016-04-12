@@ -36,7 +36,6 @@
 #include "utilstrencodings.h"
 #include "validationinterface.h"
 #include "poc.h"
-#include "cvn.h"
 #ifdef ENABLE_WALLET
 #include "wallet/db.h"
 #include "wallet/wallet.h"
@@ -199,7 +198,6 @@ void Shutdown()
 #endif
     RunCertifiedValidationNode(false, Params());
     RunCVNSignerThread(Params());
-    DumpCVNs();
     StopNode();
     StopTorControl();
     UnregisterNodeSignals(GetNodeSignals());
@@ -1653,9 +1651,6 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     CScheduler::Function f = boost::bind(&PartitionCheck, &IsInitialBlockDownload,
                                          boost::ref(cs_main), boost::cref(pindexBestHeader), nPowTargetSpacing);
     scheduler.scheduleEvery(f, nPowTargetSpacing);
-
-    // Read CVNs
-    ReadCVNs(threadGroup, scheduler);
 
     // Start up a CVN (generate blocks)
     RunCertifiedValidationNode(GetBoolArg("-gen", DEFAULT_GENERATE), chainparams);

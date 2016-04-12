@@ -303,7 +303,6 @@ static const CRPCCommand vRPCCommands[] =
     { "util",               "createmultisig",         &createmultisig,         true  },
     { "util",               "validateaddress",        &validateaddress,        true  }, /* uses wallet if enabled */
     { "util",               "verifymessage",          &verifymessage,          true  },
-    { "util",               "createadminsig",         &createadminsig,         true  },
     { "util",               "addcvn",                 &addcvn,                 true  },
     { "util",               "removecvn",              &removecvn,              true  },
 

@@ -10,6 +10,12 @@
 #include "serialize.h"
 #include "uint256.h"
 
+class CChainParams;
+
+/** CVNs send this signature to the creator of the next block
+ * to proof consensus about the block. The GetUnsignedHash() hash
+ * of the next block is signed.
+ */
 class CBlockSignature
 {
 public:
@@ -24,6 +30,13 @@ public:
     }
 
     CBlockSignature(const uint32_t nSignerNodeId, const int32_t nVersion = CBlockSignature::CURRENT_VERSION)
+    {
+        this->nVersion = nVersion;
+        this->nSignerId = nSignerNodeId;
+        this->vSignature.clear();
+    }
+
+    CBlockSignature(const uint32_t nSignerNodeId, std::vector<unsigned char> vSignature, const int32_t nVersion = CBlockSignature::CURRENT_VERSION)
     {
         this->nVersion = nVersion;
         this->nSignerId = nSignerNodeId;
@@ -50,6 +63,85 @@ public:
     std::string GetSignatureHex() const;
 
     std::string ToString() const;
+
+    bool IsValid(const CChainParams& params, const uint256 hashTmp, const bool isCvnBlock = false) const;
+};
+
+class CCvnInfo
+{
+public:
+
+    uint32_t nNodeId;
+    std::vector<unsigned char> vPubKey;
+
+    CCvnInfo()
+    {
+        SetNull();
+    }
+
+    CCvnInfo(const uint32_t nNodeId, const std::vector<unsigned char> vPubKey)
+    {
+        this->nNodeId = nNodeId;
+        this->vPubKey = vPubKey;
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(nNodeId);
+        READWRITE(vPubKey);
+    }
+
+    void SetNull()
+    {
+        nNodeId = 0;
+        vPubKey.clear();
+    }
+
+    uint256 GetHash() const;
+};
+
+class CDynamicChainParams
+{
+public:
+    static const uint32_t CURRENT_VERSION = 1;
+    uint32_t nVersion;
+    uint32_t nMinCvnSigners;
+    uint32_t nMaxCvnSigners;
+    uint32_t nBlockSpacing; // in seconds
+    uint32_t nDustThreshold; // in seconds
+    std::vector<unsigned char> vPubKey;
+
+    CDynamicChainParams()
+    {
+        SetNull();
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(this->nVersion);
+        nVersion = this->nVersion;
+        READWRITE(nMinCvnSigners);
+        READWRITE(nMaxCvnSigners);
+        READWRITE(nBlockSpacing);
+        READWRITE(nDustThreshold);
+        READWRITE(vPubKey);
+    }
+
+    void SetNull()
+    {
+        nVersion = CDynamicChainParams::CURRENT_VERSION;
+        nMaxCvnSigners = 0;
+        nMinCvnSigners = 0;
+        nBlockSpacing = 0;
+        nDustThreshold = 0;
+        vPubKey.clear();
+    }
+
+    uint256 GetHash() const;
 };
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
@@ -63,7 +155,10 @@ class CUnsignedBlockHeader
 {
 public:
     // header
-    static const int32_t CURRENT_VERSION=1;
+    static const int32_t       CURRENT_VERSION = 1;
+    static const int32_t              TX_BLOCK = 1 << 8;
+    static const int32_t             CVN_BLOCK = 1 << 9;
+    static const int32_t CHAIN_PARAMETER_BLOCK = 1 << 10;
     int32_t nVersion;
     uint256 hashPrevBlock;
     uint256 hashMerkleRoot;
@@ -110,6 +205,21 @@ public:
     {
         return (int64_t)nTime;
     }
+
+    bool HasCvnInfo() const
+    {
+        return (nVersion & CVN_BLOCK);
+    }
+
+    bool HasChainParameters() const
+    {
+        return (nVersion & CHAIN_PARAMETER_BLOCK);
+    }
+
+    bool HasTx() const
+    {
+        return (nVersion & TX_BLOCK);
+    }
 };
 
 class CBlockHeader : public CUnsignedBlockHeader
@@ -145,6 +255,8 @@ class CBlock : public CBlockHeader
 public:
     // network and disk
     std::vector<CTransaction> vtx;
+    std::vector<CCvnInfo> vCvns;
+    CDynamicChainParams dynamicChainParams;
 
     // memory only
     mutable bool fChecked;
@@ -165,13 +277,21 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
         READWRITE(*(CBlockHeader*)this);
-        READWRITE(vtx);
+
+        if (HasCvnInfo())
+        	READWRITE(vCvns);
+        else if (HasChainParameters())
+            READWRITE(dynamicChainParams);
+        else
+        	READWRITE(vtx);
     }
 
     void SetNull()
     {
         CBlockHeader::SetNull();
         vtx.clear();
+        vCvns.clear();
+        dynamicChainParams = CDynamicChainParams();
         fChecked = false;
     }
 
@@ -189,6 +309,8 @@ public:
     }
 
     std::string ToString() const;
+
+    uint256 HashCVNs() const;
 };
 
 

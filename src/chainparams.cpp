@@ -19,42 +19,20 @@
 #include "chainparamsseeds.h"
 #include <stdio.h>
 
-static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nCreatorId, int32_t nVersion, const CAmount& genesisReward)
-{
-    CMutableTransaction txNew;
-    txNew.nVersion = 1;
-    txNew.vin.resize(1);
-    txNew.vout.resize(1);
-    txNew.vin[0].scriptSig = CScript() << 486604799 << CScriptNum(4) << std::vector<unsigned char>((const unsigned char*)pszTimestamp, (const unsigned char*)pszTimestamp + strlen(pszTimestamp));
-    txNew.vout[0].nValue = genesisReward;
-    txNew.vout[0].scriptPubKey = genesisOutputScript;
+CDynamicChainParams dynParams;
 
+//#define SHOW_HASHES 1
+
+static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nCreatorId, const CDynamicChainParams& dynamicChainParams)
+{
     CBlock genesis;
+    genesis.nVersion   = CUnsignedBlockHeader::CURRENT_VERSION | CUnsignedBlockHeader::CVN_BLOCK | CUnsignedBlockHeader::CHAIN_PARAMETER_BLOCK;
     genesis.nTime      = nTime;
     genesis.nCreatorId = nCreatorId;
-    genesis.nVersion   = nVersion;
-    genesis.vtx.push_back(txNew);
     genesis.hashPrevBlock.SetNull();
+    genesis.dynamicChainParams = dynamicChainParams;
     genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
     return genesis;
-}
-
-/**
- * Build the genesis block. Note that the output of its generation
- * transaction cannot be spent since it did not originally exist in the
- * database.
- *
- * CBlock(hash=000000000019d6, ver=1, hashPrevBlock=00000000000000, hashMerkleRoot=4a5e1e, nTime=1231006505, nBits=1d00ffff, nNonce=2083236893, vtx=1)
- *   CTransaction(hash=4a5e1e, ver=1, vin.size=1, vout.size=1, nLockTime=0)
- *     CTxIn(COutPoint(000000, -1), coinbase 04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73)
- *     CTxOut(nValue=50.00000000, scriptPubKey=0x5F1DF16B2B704C8A578D0B)
- *   vMerkleTree: 4a5e1e
- */
-static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nCreatorId, int32_t nVersion, const CAmount& genesisReward)
-{
-    const char* pszTimestamp = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks";
-    const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-    return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nCreatorId, nVersion, genesisReward);
 }
 
 /**
@@ -74,13 +52,6 @@ std::string GetHex(std::vector<unsigned char> data)
     for (unsigned int i = 0; i < sizeof(data); i++)
         sprintf(psz + i * 2, "%02x", data[sizeof(data) - i - 1]);
     return std::string(psz, psz + sizeof(data) * 2);
-}
-
-bool CCvnAdminSigner::IsValid() const
-{
-	CPubKey pubKey(vPubKey);
-
-	return pubKey.IsFullyValid();
 }
 
 class CMainParams : public CChainParams {
@@ -106,32 +77,30 @@ public:
         nDefaultPort = 40404;
         nMaxTipAge = 24 * 60 * 60;
         nPruneAfterHeight = 100000;
-        nBlockSpacing = 1 * 60;
 
-        nMaxAdminSigners = 5;
-        nMinAdminSigners = 3;
-        vAdminSigners.clear();
-        CCvnAdminSigner s1(1l, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
-        vAdminSigners.push_back(s1); assert(s1.IsValid());
-        CCvnAdminSigner s2(2l, ParseHex("04a88247e9d3dcb6e59fa75f5f35d365250d0bf6f3937c2f86cc73de097e5733002327bfaea4e2246ec20fa2a65a935b02c932e5d2cf799c43b76b85941d2a77a2"));
-        vAdminSigners.push_back(s2); assert(s2.IsValid());
-        CCvnAdminSigner s3(3l, ParseHex("0467d966f864645353ab648315e49c274f0ebc133744463d1b77f6c07821d90383a9a79211f53460e8c946ecc35948d1610ebb754e6cf0473ddcf0668c4a58ee51"));
-        vAdminSigners.push_back(s3); assert(s3.IsValid());
-        CCvnAdminSigner s4(4l, ParseHex("041a38cd83bfa1a16df0333da96d2afdb65e9c65ef85609f0820a0cef33fd8f46ca9d28d1445f32aa4b8142cd80b0ae94ea3c35be4c16b756a3fc930ad9c07c85a"));
-        vAdminSigners.push_back(s4); assert(s4.IsValid());
-        CCvnAdminSigner s5(5l, ParseHex("043ae4e93154d679c235a08c82fabf08ccc990161015e27e0564f338a94f10d07dce7b4f54167266c74ed06dea2599c15a767f20a333b1e40a67d1f7abfb4425ac"));
-        vAdminSigners.push_back(s5); assert(s5.IsValid());
+        CDynamicChainParams dynParams;
+        dynParams.nBlockSpacing = 1 * 60;
+        dynParams.nMaxCvnSigners = 1;
+        dynParams.nMinCvnSigners = 1;
+        dynParams.nDustThreshold = 10000; // µFAIR
 
-        genesis = CreateGenesisBlock(1458643274, 0xC001D00D, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(1458643274, 0xC001D00D, dynParams);
+
+        genesis.vCvns.resize(1);
+        genesis.vCvns[0] = CCvnInfo(0xC001D00D, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+
         CBlockSignature genesisSignature(0xC001D00D);
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
-//        printf("main: %s\n", consensus.hashGenesisBlock.ToString().c_str());
-//        printf("genesis block main net:\n%s\n", genesis.ToString().c_str());
-        assert(consensus.hashGenesisBlock == uint256S("0xb9894936306866e2e5665b4d63703e7cb3f26fa7b1bd86daf0cef865547526ca"));
-        assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
+#ifdef SHOW_HASHES
+        printf("main: %s\nmain merkle: %s\n", consensus.hashGenesisBlock.ToString().c_str(), genesis.hashMerkleRoot.ToString().c_str());
+        printf("genesis block main net:\n%s\n", genesis.ToString().c_str());
+#else
+        assert(consensus.hashGenesisBlock == uint256S("e5ca7576eac73eee4ec5767c548e8aaa41451321470e9eccd7ff455c0687df7d"));
+        assert(genesis.hashMerkleRoot == uint256S("f1d6f9193bfdad4e12c10e8f761fb3bb7f5494fd860611141faf9fd2100321c8"));
+#endif
         vSeeds.push_back(CDNSSeedData("1.fair-coin.org", "faircoin2-seed1.fair-coin.org")); // Thomas König
         vSeeds.push_back(CDNSSeedData("2.fair-coin.org", "faircoin2-seed2.fair-coin.org")); // Thomas König
 
@@ -182,17 +151,27 @@ public:
         nDefaultPort = 41404;
         nMaxTipAge = 0x7fffffff;
         nPruneAfterHeight = 1000;
-        nBlockSpacing = 3 * 60;
+        CDynamicChainParams dynParams;
+        dynParams.nBlockSpacing = 3 * 60;
+        dynParams.nMaxCvnSigners = 1;
+        dynParams.nMinCvnSigners = 1;
+        dynParams.nDustThreshold = 10000; // µFAIR
 
-        genesis = CreateGenesisBlock(1458643274, 0xC001CAFE, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(1458643274, 0xC001D00D, dynParams);
+
+        genesis.vCvns.resize(1);
+        genesis.vCvns[0] = CCvnInfo(0xC001D00D, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+
         CBlockSignature genesisSignature(0xC001CAFE);
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
-//        printf("test: %s\n", consensus.hashGenesisBlock.ToString().c_str());
-        assert(consensus.hashGenesisBlock == uint256S("0x61d9f3c05a04e3aaea24466ab27d56ca7c4ee76b6ca0f509f824eb18962b53ce"));
-        assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
-
+#ifdef SHOW_HASHES
+        printf("test: %s\ntest merkle: %s\n", consensus.hashGenesisBlock.ToString().c_str(), genesis.hashMerkleRoot.ToString().c_str());
+#else
+        assert(consensus.hashGenesisBlock == uint256S("75cc7f74473d53185757980a51d73aa47eb8ac5a91ee5c3837786b23c3189df5"));
+        assert(genesis.hashMerkleRoot == uint256S("fd8ca936c23ec918607277fa7ac1496ad551eb33b8b3b07bc984e6f446378afb"));
+#endif
         vFixedSeeds.clear();
         vSeeds.clear();
         vSeeds.push_back(CDNSSeedData("1.fair-coin.org", "faircoin2-seed1.fair-coin.org")); // Thomas König
@@ -245,17 +224,27 @@ public:
         nMaxTipAge = 24 * 60 * 60;
         nDefaultPort = 42404;
         nPruneAfterHeight = 1000;
-        nBlockSpacing = 3 * 60;
+        CDynamicChainParams dynParams;
+        dynParams.nBlockSpacing = 1 * 60;
+        dynParams.nMaxCvnSigners = 1;
+        dynParams.nMinCvnSigners = 1;
+        dynParams.nDustThreshold = 10000; // µFAIR
 
-        genesis = CreateGenesisBlock(1458643274, 0xCAFEBABE, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(1458643274, 0xC001D00D, dynParams);
+
+        genesis.vCvns.resize(1);
+        genesis.vCvns[0] = CCvnInfo(0xC001D00D, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+
         CBlockSignature genesisSignature(0xCAFEBABE);
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
-//        printf("reg: %s\n", consensus.hashGenesisBlock.ToString().c_str());
-        assert(consensus.hashGenesisBlock == uint256S("0x5daec43cedbd536e7bd5f8a9112eb8c76fd11a275300ffa24e429dcfa6f36a28"));
-        assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
-
+#ifdef SHOW_HASHES
+        printf("reg: %s\nreg merkle: %s\n", consensus.hashGenesisBlock.ToString().c_str(), genesis.hashMerkleRoot.ToString().c_str());
+#else
+        assert(consensus.hashGenesisBlock == uint256S("273eb678087fe37f8b414916f94a4ffedeb0d0c1083af4106e68516d8f702f98"));
+        assert(genesis.hashMerkleRoot == uint256S("f1d6f9193bfdad4e12c10e8f761fb3bb7f5494fd860611141faf9fd2100321c8"));
+#endif
         vFixedSeeds.clear(); //! Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();  //! Regtest mode doesn't have any DNS seeds.
 

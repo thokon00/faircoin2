@@ -12,9 +12,10 @@
 #include "rpcserver.h"
 #include "timedata.h"
 #include "util.h"
-#include "cvn.h"
 #include "utilstrencodings.h"
 #include "tinyformat.h"
+#include "miner.h"
+#include "consensus/validation.h"
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h"
@@ -398,22 +399,36 @@ UniValue setmocktime(const UniValue& params, bool fHelp)
     return NullUniValue;
 }
 
-static void CheckAdminSignature(CSignedCvnInfo &signedInfo, const UniValue& sigs, const bool fRemove)
+static bool ProcessNewCvnBlock(const CBlock* pblock, const CChainParams& chainparams)
 {
-    uint32_t nMaxAdminSigners = (uint32_t) Params().MaxAdminSigners();
-    uint32_t nMinAdminSigners = (uint32_t) Params().MinAdminSigners();
+	if (pblock->hashPrevBlock != chainActive.Tip()->GetBlockHash())
+		return error("ProcessNewCvnBlock: cvn block is stale");
 
-    if (sigs.size() < nMinAdminSigners)
+    // Inform about the new block
+    GetMainSignals().BlockFound(pblock->GetHash());
+
+    // Process this block the same as if we had received it from another node
+    CValidationState state;
+    if (!ProcessNewBlock(state, chainparams, NULL, pblock, true, NULL))
+        return error("ProcessNewCvnBlock: ProcessNewCvnBlock, block not accepted");
+
+    return true;
+}
+
+static void SignCvnBlock(CBlock &block, const UniValue& sigs)
+{
+    if (sigs.size() < (size_t)dynParams.nMinCvnSigners)
         throw runtime_error(
             strprintf("not enough signatures supplied "
-                      "(got %u signatures, but need at least %u to sign)", sigs.size(), nMinAdminSigners));
-    if (sigs.size() > nMaxAdminSigners)
+                      "(got %u signatures, but need at least %u to sign)", sigs.size(), (size_t)dynParams.nMinCvnSigners));
+    if (sigs.size() > (size_t)dynParams.nMaxCvnSigners)
         throw runtime_error(
-                strprintf("too many signatures supplied %u (%u max)\nReduce the number", sigs.size(), nMaxAdminSigners));
+            strprintf("too many signatures supplied %u (%u max)\nReduce the number", sigs.size(), (size_t)dynParams.nMaxCvnSigners));
 
-    signedInfo.vSignatures.resize(sigs.size());
+    block.vSignatures.resize(sigs.size());
+    uint256 unsignedHash = block.GetUnsignedHash();
 
-    for (unsigned int i = 0; i < sigs.size(); i++)
+    for (uint32_t i = 0 ; i < sigs.size() ; i++)
     {
         const std::string& strSig = sigs[i].get_str();
         vector<string> vTokens;
@@ -423,29 +438,29 @@ static void CheckAdminSignature(CSignedCvnInfo &signedInfo, const UniValue& sigs
             throw runtime_error(strprintf("signature %u is of invalid format", i + 1));
 
         uint32_t signerId = atol(vTokens[0].c_str());
-        signedInfo.vSignatures[i] = CCvnAdminSignature(signerId, ParseHex(vTokens[1]));
+        block.vSignatures[i] = CBlockSignature(signerId, ParseHex(vTokens[1]));
 
-        if (!signedInfo.vSignatures[i].IsValid(Params(), signedInfo.GetHash()))
-            LogPrintf("signature %u is invalid\n", i + 1);
+        if (!block.vSignatures[i].IsValid(Params(), unsignedHash, true))
+            LogPrintf("signature %u : %s is invalid\n", i + 1, HexStr(block.vSignatures[i].vSignature));
     }
-
-    if (!signedInfo.CheckCvnInfo(Params(), fRemove))
-        throw runtime_error("CvnInfo check failed");
 }
 
 UniValue addcvn(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 3)
+    if (fHelp || params.size() != 4)
         throw runtime_error(
-            "addcvn \"nodeId\" \"pubkey\" [\"n:sigs\",...]\n"
+            "addcvn \"nodeId\" \"timestamp\" \"pubkey\" [\"n:sigs\",...]\n"
             "\nAdd a new CVN to the FairCoin network\n"
             "\nArguments:\n"
             "1. \"nodeId\"       (int, required) The node ID (in decimal) of the new CVN.\n"
+            "2. \"timestamp\"    (int, required) The time of block creation.\n"
             "2. \"pubkey\"       (string, required) The public key of the CVN (in hex).\n"
             "3. \"n:sigs\"       (string, required) The admin signatures prefix by the signer ID (n)\n"
             "\nResult:\n"
             "{\n"
-                "  \"nodeId\":\"node ID (dec) node ID (hex)\",  (string) The node ID  of the new CVN in decimal and in hex separated by a space\n"
+                "  \"nodeId\":\"node ID in decimal\",  (int) The node ID of the new CVN in decimal form\n"
+                "  \"nodeIdHex\":\"node ID in hex\",   (int) The node ID of the new CVN in hexadecimal form\n"
+                "  \"timestamp\":\"node ID (dec) node ID\",  (int64) The node ID  of the new CVN in decimal and in hex separated by a space\n"
                 "  \"address\":\"faircoin address\",            (string) The FairCoin address of the new CVN.\n"
                 "  \"pubKey\":\"public key\",                   (string) The public key of the new CVN (in hex).\n"
                 "  \"signatures\":\"number of signatures\"      (string) The number of admin signatures that signed the CvnInfo.\n"
@@ -458,38 +473,56 @@ UniValue addcvn(const UniValue& params, bool fHelp)
     LOCK(cs_main);
 
     uint32_t nNodeId = params[0].get_int();
+    uint32_t nTime = params[1].get_int();
 
-    std::vector<unsigned char> vPubKey = ParseHex(params[1].get_str());
+    std::vector<unsigned char> vPubKey = ParseHex(params[2].get_str());
     CPubKey pubKey(vPubKey);
 
     if (!pubKey.IsFullyValid())
-        throw runtime_error(" Invalid public key: " + params[1].get_str());
+        throw runtime_error(" Invalid public key: " + params[2].get_str());
 
     CKeyID keyID = pubKey.GetID();
 
     CBitcoinAddress address;
     address.Set(keyID);
 
-    const UniValue& sigs = params[2].get_array();
+    const UniValue& sigs = params[3].get_array();
 
-    CSignedCvnInfo signedInfo(nNodeId, vPubKey);
+    CBlockIndex* pindexPrev = chainActive.Tip();
 
-    CheckAdminSignature(signedInfo, sigs, false);
+    CBlock block;
+    block.nVersion      |= CBlock::CVN_BLOCK;
+    block.nTime          = nTime;
+    block.hashPrevBlock  = pindexPrev->GetBlockHash();
+    block.nHeight        = pindexPrev->nHeight + 1;
+    block.nCreatorId     = 0xc001d00d;
 
-    // Relay CVN
+    block.vCvns.resize(mapCVNs.size() + 1);
+
+    uint32_t index = 0;
+    typedef std::map<uint32_t, CCvnInfo> CvnMapType;
+    BOOST_FOREACH(const CvnMapType::value_type& cvn, mapCVNs)
     {
-        LOCK(cs_vNodes);
-        BOOST_FOREACH(CNode* pnode, vNodes)
-        signedInfo.RelayTo(pnode);
-    }
+    	block.vCvns[index++] = cvn.second;
+    };
 
-    LogPrintf("added CVN 0x%08x (%u) with pubKey %s (%s) and %u valid signatures to the network\n", nNodeId, nNodeId, HexStr(vPubKey), address.ToString(), signedInfo.vSignatures.size());
+    CCvnInfo cvn(nNodeId, vPubKey);
+    block.vCvns[index++] = cvn;
+
+    block.hashMerkleRoot = block.HashCVNs();
+
+    SignCvnBlock(block, sigs);
+
+    LogPrintf("Test: %s\n", block.ToString());
+
+    LogPrintf("about to added CVN 0x%08x (%u) with pubKey %s (%s) to the network\n", nNodeId, nNodeId, HexStr(vPubKey), address.ToString());
+    ProcessNewCvnBlock(&block, Params());
 
     UniValue result(UniValue::VOBJ);
-    result.push_back(Pair("nodeId", strprintf("0x%08x %u", nNodeId, nNodeId)));
+    result.push_back(Pair("nodeId", strprintf("%u", nNodeId)));
+    result.push_back(Pair("nodeIdHex", strprintf("0x%08x", nNodeId)));
     result.push_back(Pair("address", address.ToString()));
     result.push_back(Pair("pubKey", HexStr(vPubKey)));
-    result.push_back(Pair("signatures", (int)signedInfo.vSignatures.size()));
 
     return result;
 }
@@ -532,64 +565,12 @@ UniValue removecvn(const UniValue& params, bool fHelp)
 
     const UniValue& sigs = params[2].get_array();
 
-    CSignedCvnInfo signedInfo(nNodeId, vPubKey);
-
-    CheckAdminSignature(signedInfo, sigs, true);
-
-    // Relay CVN
-    {
-        LOCK(cs_vNodes);
-        BOOST_FOREACH(CNode* pnode, vNodes)
-        signedInfo.RelayRemoveTo(pnode);
-    }
-
-    LogPrintf("remove CVN 0x%08x (%u) with pubKey %s (%s) and %u valid signatures from the network\n", nNodeId, nNodeId, HexStr(vPubKey), address.ToString(), signedInfo.vSignatures.size());
+    LogPrintf("remove CVN 0x%08x (%u) with pubKey %s (%s) from the network\n", nNodeId, nNodeId, HexStr(vPubKey), address.ToString());
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("nodeId", strprintf("0x%08x %u", nNodeId, nNodeId)));
     result.push_back(Pair("address", address.ToString()));
     result.push_back(Pair("pubKey", HexStr(vPubKey)));
-    result.push_back(Pair("signatures", (int)signedInfo.vSignatures.size()));
-
-    return result;
-}
-
-UniValue createadminsig(const UniValue& params, bool fHelp)
-{
-    if (fHelp || params.size() != 4)
-        throw runtime_error(
-                "createadminsig \"type\" \"nodeid\" \"pubkey\" \"privkey\"  (WIP format)\n"
-        );
-
-    LOCK(cs_main);
-
-    string sTtype = params[0].get_str();
-    int nodeId = params[1].get_int();
-    vector<unsigned char> strPubKey = ParseHex(params[2].get_str());
-
-    CBitcoinSecret vSecret;
-    vSecret.SetString(params[3].get_str());
-
-    if (!vSecret.IsValid())
-        throw runtime_error("invalid secret key");
-
-    CKey key = vSecret.GetKey();
-
-    CSignedCvnInfo signedInfo(nodeId, strPubKey);
-    std::vector<unsigned char> vSignature;
-
-    if (!key.Sign(signedInfo.GetHash(), vSignature))
-        throw runtime_error("signing failed");
-
-    CPubKey pubKey = key.GetPubKey();
-
-    if (!pubKey.Verify(signedInfo.GetHash(), vSignature))
-        throw runtime_error("verify failed");
-
-    UniValue result(UniValue::VOBJ);
-    result.push_back(Pair("hash", signedInfo.GetHash().ToString()));
-    result.push_back(Pair("pubKey", HexStr(pubKey)));
-    result.push_back(Pair("signature", HexStr(vSignature)));
 
     return result;
 }

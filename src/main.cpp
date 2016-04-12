@@ -34,7 +34,6 @@
 #include "utilmoneystr.h"
 #include "utilstrencodings.h"
 #include "validationinterface.h"
-#include "cvn.h"
 
 #include <sstream>
 
@@ -5178,54 +5177,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             } catch (const std::ios_base::failure&) {
                 // Avoid feedback loops by preventing reject messages from triggering a new reject message.
                 LogPrint("net", "Unparseable reject message received\n");
-            }
-        }
-    }
-
-    else if (strCommand == NetMsgType::ADDCVN)
-    {
-        CSignedCvnInfo cvnInfo;
-        vRecv >> cvnInfo;
-
-        if (pfrom->setKnownCVNs.count(cvnInfo.nNodeId) == 0)
-        {
-            if (cvnInfo.CheckCvnInfo(chainparams, false))
-            {
-                // Relay
-                pfrom->setKnownCVNs.insert(cvnInfo.nNodeId);
-                {
-                    LOCK(cs_vNodes);
-                    BOOST_FOREACH(CNode* pnode, vNodes)
-                        cvnInfo.RelayTo(pnode);
-                }
-            }
-            else {
-                LogPrint("cvn", "received an invalid add CVN message\n");
-                Misbehaving(pfrom->GetId(), 50);
-            }
-        }
-    }
-
-    else if (strCommand == NetMsgType::REMOVECVN)
-    {
-        CSignedCvnInfo cvnInfo;
-        vRecv >> cvnInfo;
-
-        if (pfrom->setKnownCVNs.count(cvnInfo.nNodeId))
-        {
-            if (cvnInfo.CheckCvnInfo(chainparams, true))
-            {
-                // Relay
-                pfrom->setKnownCVNs.erase(cvnInfo.nNodeId);
-                {
-                    LOCK(cs_vNodes);
-                    BOOST_FOREACH(CNode* pnode, vNodes)
-                        cvnInfo.RelayRemoveTo(pnode);
-                }
-            }
-            else {
-                LogPrint("cvn", "received an invalid remove CVN message\n");
-                Misbehaving(pfrom->GetId(), 50);
             }
         }
     }

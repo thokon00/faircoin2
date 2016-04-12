@@ -153,12 +153,32 @@ uint256 ComputeMerkleRootFromBranch(const uint256& leaf, const std::vector<uint2
 
 uint256 BlockMerkleRoot(const CBlock& block, bool* mutated)
 {
-    std::vector<uint256> leaves;
-    leaves.resize(block.vtx.size());
-    for (size_t s = 0; s < block.vtx.size(); s++) {
-        leaves[s] = block.vtx[s].GetHash();
+    std::vector<uint256> hashes;
+
+    if (block.HasTx())
+    {
+        std::vector<uint256> leaves;
+        leaves.resize(block.vtx.size());
+        for (size_t s = 0; s < block.vtx.size(); s++) {
+            leaves[s] = block.vtx[s].GetHash();
+        }
+        uint256 hash = ComputeMerkleRoot(leaves, mutated);
+        hashes.push_back(hash);
     }
-    return ComputeMerkleRoot(leaves, mutated);
+
+    if (block.HasCvnInfo())
+    {
+        uint256 hash = SerializeHash(block.vCvns);
+        hashes.push_back(hash);
+    }
+
+    if (block.HasChainParameters())
+    {
+        uint256 hash = SerializeHash(block.dynamicChainParams);
+        hashes.push_back(hash);
+    }
+
+    return Hash(hashes.begin(), hashes.end());
 }
 
 std::vector<uint256> BlockMerkleBranch(const CBlock& block, uint32_t position)
