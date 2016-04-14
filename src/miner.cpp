@@ -35,39 +35,6 @@
 #include <queue>
 #include <map>
 
-#ifdef USE_OPENSC
-#include "pkcs11/pkcs11.h"
-
-extern "C" CK_RV C_UnloadModule(void *module);
-extern "C" void *C_LoadModule(const char *mspec, CK_FUNCTION_LIST_PTR_PTR funcs);
-static void *module = NULL;
-static CK_FUNCTION_LIST_PTR p11 = NULL;
-
-#if defined(WIN32)
-static std::string defaultPkcs11ModulePath = "";
-#elif defined(MAC_OSX)
-static std::string defaultPkcs11ModulePath = "";
-#else
-static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so";
-#endif
-
-#endif
-
-CKey GetTMPKey()
-{
-    boost::shared_ptr<CReserveKey> rKey(new CReserveKey(pwalletMain));
-    CPubKey pubkey;
-    if (!rKey->GetReservedKey(pubkey))
-        printf("error could not get pubkey\n");
-
-    CKey key;
-
-    if (!pwalletMain->GetKey(pubkey.GetID(), key))
-        printf("error could not get key\n");
-
-    return key;
-}
-
 using namespace std;
 
 //////////////////////////////////////////////////////////////////////////////
@@ -118,6 +85,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& s
     // -blockversion=N to test forking scenarios
     if (chainparams.MineBlocksOnDemand())
         pblock->nVersion = GetArg("-blockversion", pblock->nVersion);
+
+    // Set block type TX_BLOCK
+    pblock->nVersion |= CBlock::TX_BLOCK;
 
     // Create coinbase tx
     CMutableTransaction txNew;
@@ -312,7 +282,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& s
 
         // Compute final coinbase transaction.
         txNew.vout[0].nValue = nFees;
-        txNew.vin[0].scriptSig = CScript();
+        txNew.vin[0].scriptSig = CScript() << nHeight << OP_0;
         pblock->vtx[0] = txNew;
         pblocktemplate->vTxFees[0] = -nFees;
 
@@ -341,8 +311,9 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
         hashPrevBlock = pblock->hashPrevBlock;
     }
     ++nExtraNonce;
+    uint32_t nHeight = pindexPrev->nHeight + 1; // Height first in coinbase
     CMutableTransaction txCoinbase(pblock->vtx[0]);
-    txCoinbase.vin[0].scriptSig = CScript();
+    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(nExtraNonce)) + COINBASE_FLAGS;
     assert(txCoinbase.vin[0].scriptSig.size() <= 100);
 
     pblock->vtx[0] = txCoinbase;
@@ -380,41 +351,10 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
 
     unsigned int nExtraNonce = 0;
 
-#ifdef USE_OPENSC
-    CK_RV rv;
-    std::string pkcs11module = GetArg("-pkcs11module", defaultPkcs11ModulePath);
-    static const char * opt_module = pkcs11module.c_str();
-
-    module = C_LoadModule(opt_module, &p11);
-    if (module == NULL) {
-        LogPrintf("Failed to load pkcs11 module\n");
-        return;
-    }
-
-    rv = p11->C_Initialize(NULL);
-    if (rv == CKR_CRYPTOKI_ALREADY_INITIALIZED) {
-        LogPrintf("library has already been initialized\n");
-    } else if (rv != CKR_OK) {
-        LogPrintf("error initializing pkcs11 framework\n");
-        return;
-    }
-
-    LogPrintf("OpenSC successfully initialized using pkcs11 module at %s\n", opt_module);
-#endif
-
     RunCVNSignerThread(chainparams);
 
     boost::shared_ptr<CReserveScript> coinbaseScript;
     GetMainSignals().ScriptForMining(coinbaseScript);
-
-    // two test signing keys
-    CBitcoinSecret vchSecret1;
-    vchSecret1.SetString("a15g6S6ZeFyhW9yUJ6B7yFmhucRadhoUDT1XN9mS9Y5Y6B6TTEPe");
-    CKey key1 = vchSecret1.GetKey();
-
-    CBitcoinSecret vchSecret2;
-    vchSecret2.SetString("a4LbQTpZJhSEqGucUNqBKV4RRwKVnrgiznZjYaA6UYX1LfiXd1Nv");
-    CKey key2 = vchSecret2.GetKey();
 
     try {
         // Throw an error if no script was provided.  This can happen
@@ -475,19 +415,12 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
                     LogPrintf("CertifiedValidationNode:\n");
                     cnt = 0;
 
-                    CBlockSignature signature1(1l);
-                    if (!key1.SignCompact(pblock->GetUnsignedHash(), signature1.vSignature))
-                        printf("error creating signature 1\n");
-
-                    pblock->vSignatures.push_back(signature1);
-
-                    CBlockSignature signature2(2l);
-                    if (!key2.SignCompact(pblock->GetUnsignedHash(), signature2.vSignature))
-                        printf("error creating signature 1\n");
-
-                    pblock->vSignatures.push_back(signature2);
-
                     pblock->nHeight = pindexPrev->nHeight + 1;
+
+                    CBlockSignature signature;
+                    SignBlock(pblock->GetUnsignedHash(), Params().GetConsensus(), signature);
+
+                    pblock->vSignatures.push_back(signature);
 
                     ProcessBlockFound(pblock, chainparams);
                     SetThreadPriority(THREAD_PRIORITY_LOWEST);
@@ -525,6 +458,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
     catch (const std::runtime_error &e)
     {
         LogPrintf("CertifiedValidationNode runtime error: %s\n", e.what());
+
         return;
     }
 }

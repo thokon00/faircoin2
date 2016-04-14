@@ -17,11 +17,12 @@
 #define MAX_DUST_THRESHOLD 1 * COIN
 #define MIN_DUST_THRESHOLD 1000
 
+#define __DBG_ LogPrintf("DEBUG: In file %s in function %s in line %d\n", __FILE__, __func__, __LINE__);
 
 extern uint32_t nCvnNodeId;
 extern CCriticalSection cs_mapCVNs;
 
-bool SignBlock(const CBlockHeader& block, const Consensus::Params& params, CBlockSignature& signature);
+bool SignBlock(const uint256& hashUnsignedBlock, const Consensus::Params& params, CBlockSignature& signature);
 
 /** Check whether a block hash satisfies the proof-of-cooperation requirements */
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&);

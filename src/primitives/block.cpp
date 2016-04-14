@@ -52,9 +52,10 @@ bool CBlockSignature::IsValid(const Consensus::Params& params, const uint256 has
     CPubKey pubKey = CPubKey(it->second.vPubKey);
 
     bool ret = pubKey.Verify(hash, vSignature);
-    if (!ret) {
-        LogPrintf("cvn","could not verify sig %s for hash %s for node Id 0x%08x\n", HexStr(vSignature), hash.ToString(), nCvnNodeId);
-    }
+
+    if (!ret)
+        LogPrintf("could not verify sig %s for hash %s for node Id 0x%08x\n", HexStr(vSignature), hash.ToString(), nCvnNodeId);
+
     return ret;
 }
 
@@ -74,7 +75,7 @@ std::string CBlockSignature::ToString() const
     s << strprintf("CBlockSignature(signerId=%u, ver=%d, sig=%s)",
         nSignerId,
         nVersion,
-        GetSignatureHex());
+        GetSignatureHex().substr(0, 30));
     return s.str();
 }
 

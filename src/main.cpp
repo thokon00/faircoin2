@@ -2898,6 +2898,11 @@ bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, unsigne
 
 bool CheckBlockHeader(const CBlockHeader& block, CValidationState& state, bool fCheckPOC)
 {
+    // Check if we have at least one of TX, CVN or CHAIN_PARAMS bits set
+    if (!(block.nVersion & CBlock::BLOCKTYPE_MASK))
+        return state.DoS(50, error("CheckBlockHeader(): invalid block version. No block type defined"),
+                         REJECT_INVALID, "no-blk-type", true);
+
     if (fCheckPOC && !CheckProofOfCooperation(block, Params().GetConsensus()))
         return state.DoS(50, error("CheckBlockHeader(): proof of cooperation failed"),
                          REJECT_INVALID, "high-hash");

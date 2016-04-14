@@ -158,6 +158,7 @@ public:
     static const int32_t              TX_BLOCK = 1 << 8;
     static const int32_t             CVN_BLOCK = 1 << 9;
     static const int32_t CHAIN_PARAMETER_BLOCK = 1 << 10;
+    static const int32_t        BLOCKTYPE_MASK = TX_BLOCK | CVN_BLOCK | CHAIN_PARAMETER_BLOCK;
     int32_t nVersion;
     uint256 hashPrevBlock;
     uint256 hashMerkleRoot;
@@ -277,12 +278,12 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
         READWRITE(*(CBlockHeader*)this);
 
+        if (HasTx())
+            READWRITE(vtx);
         if (HasCvnInfo())
             READWRITE(vCvns);
-        else if (HasChainParameters())
+        if (HasChainParameters())
             READWRITE(dynamicChainParams);
-        else if (HasTx())
-            READWRITE(vtx);
     }
 
     void SetNull()

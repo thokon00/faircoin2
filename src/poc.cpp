@@ -30,10 +30,8 @@ static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-p
 
 bool fSmartCardUnlocked = false;
 
-bool SignBlockWithSmartCard(const CBlockHeader& block, const Consensus::Params& params, CBlockSignature& signature)
+bool SignBlockWithSmartCard(const uint256& hashUnsignedBlock, const Consensus::Params& params, CBlockSignature& signature)
 {
-    //uint256 unsignedHash = block.GetUnsignedHash();
-
     throw "TBI";
 }
 
@@ -42,36 +40,34 @@ bool SignBlockWithSmartCard(const CBlockHeader& block, const Consensus::Params& 
 CCriticalSection cs_mapCVNs;
 uint32_t nCvnNodeId = 0;
 
-bool SignBlockWithKey(const CBlockHeader& block, const Consensus::Params& params, const std::string strCvnPrivKey, CBlockSignature& signature)
+bool SignBlockWithKey(const uint256& hashUnsignedBlock, const Consensus::Params& params, const std::string strCvnPrivKey, CBlockSignature& signature)
 {
     CBitcoinSecret secret;
     secret.SetString(strCvnPrivKey);
     CKey key = secret.GetKey();
 
-    uint256 unsignedHash = block.GetUnsignedHash();
-
-    if (!key.Sign(unsignedHash, signature.vSignature)) {
-        LogPrintf("SignBlockWithKey : could not create block signature\n");
+    if (!key.Sign(hashUnsignedBlock, signature.vSignature)) {
+        LogPrint("cvn", "SignBlockWithKey : could not create block signature\n");
         return false;
     }
 
-
-    if (!signature.IsValid(params, unsignedHash, nCvnNodeId)) {
-        LogPrintf("SignBlockWithKey : created invalid signature\n");
+    if (!signature.IsValid(params, hashUnsignedBlock, nCvnNodeId)) {
+        LogPrint("cvn", "SignBlockWithKey : created invalid signature\n");
         return false;
     }
+
     LogPrintf("SignBlockWithKey : OK\n  Hash: %s\n  node: 0x%08x\n  pubk: %s\n   sig: %s\n",
-            unsignedHash.ToString(), nCvnNodeId,
+            hashUnsignedBlock.ToString(), nCvnNodeId,
             HexStr(params.mapCVNs.find(nCvnNodeId)->second.vPubKey),
             HexStr(signature.vSignature));
 
     return true;
 }
 
-bool SignBlock(const CBlockHeader& block, const Consensus::Params& params, CBlockSignature& signature)
+bool SignBlock(const uint256& hashUnsignedBlock, const Consensus::Params& params, CBlockSignature& signature)
 {
     if (!nCvnNodeId) {
-        LogPrintf("SignBlock : CVN node not initialized\n");
+        LogPrint("cvn", "SignBlock : CVN node not initialized\n");
         return false;
     }
 
@@ -79,7 +75,7 @@ bool SignBlock(const CBlockHeader& block, const Consensus::Params& params, CBloc
 
     if (GetBoolArg("-usesmartcard", false)) {
 #ifdef USE_OPENSC
-        return SignBlockWithSmartCard(block, params, signature);
+        return SignBlockWithSmartCard(hashUnsignedBlock, params, signature);
 #else
         LogPrintf("SignBlock : ERROR, this wallet was not compile with smart card support\n");
         return false;
@@ -88,11 +84,11 @@ bool SignBlock(const CBlockHeader& block, const Consensus::Params& params, CBloc
         std::string strCvnPrivKey = GetArg("-cvnprivkey", "");
 
         if (strCvnPrivKey.size() != 51) {
-            LogPrintf("SignBlock : ERROR, invalid private key supplied or -cvnprivkey is missing\n");
+            LogPrint("cvn", "SignBlock : ERROR, invalid private key supplied or -cvnprivkey is missing\n");
             return false;
         }
 
-        return SignBlockWithKey(block, params, strCvnPrivKey, signature);
+        return SignBlockWithKey(hashUnsignedBlock, params, strCvnPrivKey, signature);
     }
 
     return false;
@@ -101,7 +97,7 @@ bool SignBlock(const CBlockHeader& block, const Consensus::Params& params, CBloc
 void UpdateCvnInfo(const CBlock* pblock)
 {
     if (!pblock->HasCvnInfo()) {
-        LogPrintf("UpdateCvnInfo : ERROR, block is not of type CVN\n");
+        LogPrint("cvn", "UpdateCvnInfo : ERROR, block is not of type CVN\n");
         return;
     }
 
@@ -155,6 +151,7 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
     uint256 unsignedHash = block.GetUnsignedHash();
 
     LogPrint("cvn", "CheckProofOfCooperation : checking signatures\n");
+
     uint32_t i = 0;
     BOOST_FOREACH(CBlockSignature signature, block.vSignatures) {
         if (!block.vSignatures[i++].IsValid(params, unsignedHash, nCvnNodeId))
