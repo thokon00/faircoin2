@@ -164,7 +164,8 @@ uint256 BlockMerkleRoot(const CBlock& block, bool* mutated)
         }
         uint256 hash = ComputeMerkleRoot(leaves, mutated);
         hashes.push_back(hash);
-    }
+    } else
+        if (mutated) *mutated = false;
 
     if (block.HasCvnInfo())
     {

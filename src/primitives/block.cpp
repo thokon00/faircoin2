@@ -8,11 +8,12 @@
 #include "primitives/block.h"
 
 #include "hash.h"
+#include "util.h"
 #include "tinyformat.h"
 #include "utilstrencodings.h"
 #include "crypto/common.h"
 #include "pubkey.h"
-#include "chainparams.h"
+#include "consensus/params.h"
 
 uint256 CUnsignedBlockHeader::GetUnsignedHash() const
 {
@@ -31,7 +32,7 @@ uint256 CCvnInfo::GetHash() const
 
 uint256 CBlock::HashCVNs() const
 {
-	return SerializeHash(this->vCvns);
+    return SerializeHash(this->vCvns);
 }
 
 uint256 CDynamicChainParams::GetHash() const
@@ -39,21 +40,22 @@ uint256 CDynamicChainParams::GetHash() const
     return SerializeHash(*this);
 }
 
-bool CBlockSignature::IsValid(const CChainParams& params, const uint256 hashTmp, const bool isCvnBlock) const
+bool CBlockSignature::IsValid(const Consensus::Params& params, const uint256 hash, const uint32_t nCvnNodeId) const
 {
-    CPubKey pubKey;
+    std::map<uint32_t, CCvnInfo>::const_iterator it = params.mapCVNs.find(nCvnNodeId);
 
-    if (isCvnBlock)
-    {
-//        CCvnInfo signer = params.GetCvnSigners()[nSignerId - 1];
-//        pubKey = CPubKey(signer.vPubKey);
-    }
-    else
-    {
-        throw "TBI";
+    if (it == params.mapCVNs.end()) {
+        LogPrintf("ERROR: could not find CvnInfo for signer ID 0x%08x\n", nCvnNodeId);
+        return false;
     }
 
-    return pubKey.Verify(hashTmp, vSignature);
+    CPubKey pubKey = CPubKey(it->second.vPubKey);
+
+    bool ret = pubKey.Verify(hash, vSignature);
+    if (!ret) {
+        LogPrintf("cvn","could not verify sig %s for hash %s for node Id 0x%08x\n", HexStr(vSignature), hash.ToString(), nCvnNodeId);
+    }
+    return ret;
 }
 
 std::string CBlockSignature::GetSignatureHex() const

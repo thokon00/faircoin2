@@ -9,8 +9,7 @@
 #include "primitives/transaction.h"
 #include "serialize.h"
 #include "uint256.h"
-
-class CChainParams;
+#include "consensus/params.h"
 
 /** CVNs send this signature to the creator of the next block
  * to proof consensus about the block. The GetUnsignedHash() hash
@@ -64,7 +63,7 @@ public:
 
     std::string ToString() const;
 
-    bool IsValid(const CChainParams& params, const uint256 hashTmp, const bool isCvnBlock = false) const;
+    bool IsValid(const Consensus::Params& params, const uint256 hash, const uint32_t nCvnNodeId) const;
 };
 
 class CCvnInfo
@@ -279,11 +278,11 @@ public:
         READWRITE(*(CBlockHeader*)this);
 
         if (HasCvnInfo())
-        	READWRITE(vCvns);
+            READWRITE(vCvns);
         else if (HasChainParameters())
             READWRITE(dynamicChainParams);
-        else
-        	READWRITE(vtx);
+        else if (HasTx())
+            READWRITE(vtx);
     }
 
     void SetNull()

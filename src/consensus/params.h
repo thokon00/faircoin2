@@ -7,6 +7,9 @@
 #define BITCOIN_CONSENSUS_PARAMS_H
 
 #include "uint256.h"
+#include <map>
+
+class CCvnInfo;
 
 namespace Consensus {
 /**
@@ -22,6 +25,8 @@ struct Params {
 
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
+
+    std::map<uint32_t, CCvnInfo> mapCVNs;
 };
 } // namespace Consensus
 

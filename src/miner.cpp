@@ -53,9 +53,6 @@ static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-p
 
 #endif
 
-CCriticalSection cs_mapCVNs;
-std::map<uint32_t, CCvnInfo> mapCVNs;
-
 CKey GetTMPKey()
 {
     boost::shared_ptr<CReserveKey> rKey(new CReserveKey(pwalletMain));
@@ -314,15 +311,15 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& s
         LogPrintf("CreateNewBlock(): total size %u txs: %u fees: %ld sigops %d\n", nBlockSize, nBlockTx, nFees, nBlockSigOps);
 
         // Compute final coinbase transaction.
-        txNew.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
-        txNew.vin[0].scriptSig = CScript() << nHeight << OP_0;
+        txNew.vout[0].nValue = nFees;
+        txNew.vin[0].scriptSig = CScript();
         pblock->vtx[0] = txNew;
         pblocktemplate->vTxFees[0] = -nFees;
 
         // Fill in header
         pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
         UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
-        pblock->nCreatorId     = 0xdeadbeef;
+        pblock->nCreatorId     = nCvnNodeId;
         pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0]);
 
         CValidationState state;
@@ -344,9 +341,8 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
         hashPrevBlock = pblock->hashPrevBlock;
     }
     ++nExtraNonce;
-    unsigned int nHeight = pindexPrev->nHeight+1; // Height first in coinbase required for block.version=2
     CMutableTransaction txCoinbase(pblock->vtx[0]);
-    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(nExtraNonce)) + COINBASE_FLAGS;
+    txCoinbase.vin[0].scriptSig = CScript();
     assert(txCoinbase.vin[0].scriptSig.size() <= 100);
 
     pblock->vtx[0] = txCoinbase;
@@ -470,7 +466,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
             uint256 hash;
             int cnt = 0;
             while (true) {
-                MilliSleep(10000000000);
+                MilliSleep(5000);
                 // Check if something found
                 if (!(++cnt % 2)) //ScanHash(pblock, nNonce, &hash)
                 {
@@ -492,8 +488,6 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
                     pblock->vSignatures.push_back(signature2);
 
                     pblock->nHeight = pindexPrev->nHeight + 1;
-
-                    LogPrintf("creating next block\n  hash: %s  \nnodeid: %u\n  \nheight: %u\n", pblock->GetHash().ToString(), pblock->nCreatorId, pblock->nHeight);
 
                     ProcessBlockFound(pblock, chainparams);
                     SetThreadPriority(THREAD_PRIORITY_LOWEST);

@@ -7,18 +7,157 @@
 #include "main.h"
 #include "timedata.h"
 #include "utilstrencodings.h"
+#include "base58.h"
 
 #include <boost/thread.hpp>
 #include <stdio.h>
 
-bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&)
+#ifdef USE_OPENSC
+#include "pkcs11/pkcs11.h"
+
+extern "C" CK_RV C_UnloadModule(void *module);
+extern "C" void *C_LoadModule(const char *mspec, CK_FUNCTION_LIST_PTR_PTR funcs);
+static void *module = NULL;
+static CK_FUNCTION_LIST_PTR p11 = NULL;
+
+#if defined(WIN32)
+static std::string defaultPkcs11ModulePath = "";
+#elif defined(MAC_OSX)
+static std::string defaultPkcs11ModulePath = "";
+#else
+static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so";
+#endif
+
+bool fSmartCardUnlocked = false;
+
+bool SignBlockWithSmartCard(const CBlockHeader& block, const Consensus::Params& params, CBlockSignature& signature)
+{
+    //uint256 unsignedHash = block.GetUnsignedHash();
+
+    throw "TBI";
+}
+
+#endif // USE_OPENSC
+
+CCriticalSection cs_mapCVNs;
+uint32_t nCvnNodeId = 0;
+
+bool SignBlockWithKey(const CBlockHeader& block, const Consensus::Params& params, const std::string strCvnPrivKey, CBlockSignature& signature)
+{
+    CBitcoinSecret secret;
+    secret.SetString(strCvnPrivKey);
+    CKey key = secret.GetKey();
+
+    uint256 unsignedHash = block.GetUnsignedHash();
+
+    if (!key.Sign(unsignedHash, signature.vSignature)) {
+        LogPrintf("SignBlockWithKey : could not create block signature\n");
+        return false;
+    }
+
+
+    if (!signature.IsValid(params, unsignedHash, nCvnNodeId)) {
+        LogPrintf("SignBlockWithKey : created invalid signature\n");
+        return false;
+    }
+    LogPrintf("SignBlockWithKey : OK\n  Hash: %s\n  node: 0x%08x\n  pubk: %s\n   sig: %s\n",
+            unsignedHash.ToString(), nCvnNodeId,
+            HexStr(params.mapCVNs.find(nCvnNodeId)->second.vPubKey),
+            HexStr(signature.vSignature));
+
+    return true;
+}
+
+bool SignBlock(const CBlockHeader& block, const Consensus::Params& params, CBlockSignature& signature)
+{
+    if (!nCvnNodeId) {
+        LogPrintf("SignBlock : CVN node not initialized\n");
+        return false;
+    }
+
+    signature.nSignerId = nCvnNodeId;
+
+    if (GetBoolArg("-usesmartcard", false)) {
+#ifdef USE_OPENSC
+        return SignBlockWithSmartCard(block, params, signature);
+#else
+        LogPrintf("SignBlock : ERROR, this wallet was not compile with smart card support\n");
+        return false;
+#endif
+    } else {
+        std::string strCvnPrivKey = GetArg("-cvnprivkey", "");
+
+        if (strCvnPrivKey.size() != 51) {
+            LogPrintf("SignBlock : ERROR, invalid private key supplied or -cvnprivkey is missing\n");
+            return false;
+        }
+
+        return SignBlockWithKey(block, params, strCvnPrivKey, signature);
+    }
+
+    return false;
+}
+
+void UpdateCvnInfo(const CBlock* pblock)
+{
+    if (!pblock->HasCvnInfo()) {
+        LogPrintf("UpdateCvnInfo : ERROR, block is not of type CVN\n");
+        return;
+    }
+
+    LOCK(cs_mapCVNs);
+
+    std::map<uint32_t, CCvnInfo> mapCVNs = Params().GetConsensus().mapCVNs;
+    mapCVNs.clear();
+
+    BOOST_FOREACH(CCvnInfo cvnInfo, pblock->vCvns) {
+        mapCVNs.insert(std::make_pair(cvnInfo.nNodeId, cvnInfo));
+    }
+}
+
+bool CheckDynamicChainParameters(const CDynamicChainParams& params)
+{
+    if (params.nBlockSpacing > MAX_BLOCK_SPACING || params.nBlockSpacing < MIN_BLOCK_SPACING) {
+        LogPrintf("CheckChainParameters : ERROR, block spacing %u exceeds limit\n", params.nBlockSpacing);
+        return false;
+    }
+
+    if (params.nDustThreshold > MAX_DUST_THRESHOLD || params.nDustThreshold < MIN_DUST_THRESHOLD) {
+        LogPrintf("CheckChainParameters : ERROR, dust threshold %u exceeds limit\n", params.nDustThreshold);
+        return false;
+    }
+
+    if (!params.nMinCvnSigners || params.nMinCvnSigners > params.nMaxCvnSigners) {
+        LogPrintf("CheckChainParameters : ERROR, number of CVN signers %u/%u exceeds limit\n", params.nMinCvnSigners, params.nMaxCvnSigners);
+        return false;
+    }
+
+    return true;
+}
+
+void UpdateChainParameters(const CBlock* pblock)
+{
+    if (!pblock->HasChainParameters()) {
+        LogPrintf("UpdateChainParameters : ERROR, block is not of type 'chain parameter'\n");
+        return;
+    }
+
+    CheckDynamicChainParameters(pblock->dynamicChainParams);
+
+    dynParams.nBlockSpacing = pblock->dynamicChainParams.nBlockSpacing;
+    dynParams.nDustThreshold = pblock->dynamicChainParams.nDustThreshold;
+    dynParams.nMaxCvnSigners = pblock->dynamicChainParams.nMaxCvnSigners;
+    dynParams.nMinCvnSigners = pblock->dynamicChainParams.nBlockSpacing;
+}
+
+bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params& params)
 {
     uint256 unsignedHash = block.GetUnsignedHash();
 
     LogPrint("cvn", "CheckProofOfCooperation : checking signatures\n");
     uint32_t i = 0;
     BOOST_FOREACH(CBlockSignature signature, block.vSignatures) {
-        if (!block.vSignatures[i++].IsValid(Params(), unsignedHash, block.HasCvnInfo()))
+        if (!block.vSignatures[i++].IsValid(params, unsignedHash, nCvnNodeId))
             return error("signature %u : %s is invalid\n", i, HexStr(block.vSignatures[i - 1].vSignature));
     }
 

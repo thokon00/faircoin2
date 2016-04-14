@@ -36,6 +36,7 @@
 #include "utilstrencodings.h"
 #include "validationinterface.h"
 #include "poc.h"
+#include "base58.h"
 #ifdef ENABLE_WALLET
 #include "wallet/db.h"
 #include "wallet/wallet.h"
@@ -1118,7 +1119,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 
     int64_t nStart;
 
-    // ********************************************************* Step 5: verify wallet database integrity
+    // ********************************************************* Step 5: verify wallet database integrity and set up CVN
 #ifdef ENABLE_WALLET
     if (!fDisableWallet) {
         LogPrintf("Using wallet %s\n", strWalletFile);
@@ -1137,6 +1138,27 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 
     } // (!fDisableWallet)
 #endif // ENABLE_WALLET
+
+    if (mapArgs.count("-cvnnodeid")) {
+        std::stringstream ss;
+        ss << std::hex << GetArg("-cvnnodeid", "0x00");
+        ss >> nCvnNodeId;
+
+        if (!nCvnNodeId)
+            return InitError("invalid CVN node ID supplied\n");
+
+        LogPrintf("Starting CVN node with ID 0x%08x\n", nCvnNodeId);
+        uiInterface.InitMessage(_("Starting CVN node..."));
+
+        std::string strCvnPrivKey = GetArg("-cvnprivkey", "");
+
+        CBitcoinSecret testSecret;
+        if (!testSecret.SetString(strCvnPrivKey)) {
+            nCvnNodeId = 0;
+            return InitError("invalid CVN private key supplied\n");
+        }
+    }
+
     // ********************************************************* Step 6: network initialization
 
     RegisterNodeSignals(GetNodeSignals());

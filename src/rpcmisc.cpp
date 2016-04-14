@@ -14,7 +14,7 @@
 #include "util.h"
 #include "utilstrencodings.h"
 #include "tinyformat.h"
-#include "miner.h"
+#include "poc.h"
 #include "consensus/validation.h"
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
@@ -425,6 +425,8 @@ static void SignCvnBlock(CBlock &block, const UniValue& sigs)
         throw runtime_error(
             strprintf("too many signatures supplied %u (%u max)\nReduce the number", sigs.size(), (size_t)dynParams.nMaxCvnSigners));
 
+    //TODO: we should really use SignBlock() here
+
     block.vSignatures.resize(sigs.size());
     uint256 unsignedHash = block.GetUnsignedHash();
 
@@ -440,7 +442,7 @@ static void SignCvnBlock(CBlock &block, const UniValue& sigs)
         uint32_t signerId = atol(vTokens[0].c_str());
         block.vSignatures[i] = CBlockSignature(signerId, ParseHex(vTokens[1]));
 
-        if (!block.vSignatures[i].IsValid(Params(), unsignedHash, true))
+        if (!block.vSignatures[i].IsValid(Params().GetConsensus(), unsignedHash, nCvnNodeId))
             LogPrintf("signature %u : %s is invalid\n", i + 1, HexStr(block.vSignatures[i].vSignature));
     }
 }
@@ -497,11 +499,13 @@ UniValue addcvn(const UniValue& params, bool fHelp)
     block.nHeight        = pindexPrev->nHeight + 1;
     block.nCreatorId     = 0xc001d00d;
 
-    block.vCvns.resize(mapCVNs.size() + 1);
+    Consensus::Params p = Params().GetConsensus();
+
+    block.vCvns.resize(p.mapCVNs.size() + 1);
 
     uint32_t index = 0;
     typedef std::map<uint32_t, CCvnInfo> CvnMapType;
-    BOOST_FOREACH(const CvnMapType::value_type& cvn, mapCVNs)
+    BOOST_FOREACH(const CvnMapType::value_type& cvn, p.mapCVNs)
     {
     	block.vCvns[index++] = cvn.second;
     };

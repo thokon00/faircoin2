@@ -13,6 +13,9 @@ static const unsigned int MAX_BLOCK_SIGOPS = MAX_BLOCK_SIZE/50;
 /** Coinbase transaction outputs can only be spent after this number of new blocks (network rule) */
 static const int COINBASE_MATURITY = 100;
 
+/** The maximum allowed size for a serialized block, in bytes (network rule) */
+static const unsigned int MAX_NUMBER_OF_CVNS = 100;
+
 /** Flags for LockTime() */
 enum {
     /* Use GetMedianTimePast() instead of nTime for end point timestamp. */
