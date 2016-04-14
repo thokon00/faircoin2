@@ -63,7 +63,7 @@ public:
 
     std::string ToString() const;
 
-    bool IsValid(const Consensus::Params& params, const uint256 hash, const uint32_t nCvnNodeId) const;
+    bool IsValid(const Consensus::Params& params, const uint256 hash) const;
 };
 
 class CCvnInfo

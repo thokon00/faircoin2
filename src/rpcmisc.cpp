@@ -16,6 +16,7 @@
 #include "tinyformat.h"
 #include "poc.h"
 #include "consensus/validation.h"
+#include "consensus/merkle.h"
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h"
@@ -425,8 +426,6 @@ static void SignCvnBlock(CBlock &block, const UniValue& sigs)
         throw runtime_error(
             strprintf("too many signatures supplied %u (%u max)\nReduce the number", sigs.size(), (size_t)dynParams.nMaxCvnSigners));
 
-    //TODO: we should really use SignBlock() here
-
     block.vSignatures.resize(sigs.size());
     uint256 unsignedHash = block.GetUnsignedHash();
 
@@ -442,7 +441,7 @@ static void SignCvnBlock(CBlock &block, const UniValue& sigs)
         uint32_t signerId = atol(vTokens[0].c_str());
         block.vSignatures[i] = CBlockSignature(signerId, ParseHex(vTokens[1]));
 
-        if (!block.vSignatures[i].IsValid(Params().GetConsensus(), unsignedHash, nCvnNodeId))
+        if (!block.vSignatures[i].IsValid(Params().GetConsensus(), unsignedHash))
             LogPrintf("signature %u : %s is invalid\n", i + 1, HexStr(block.vSignatures[i].vSignature));
     }
 }
@@ -454,7 +453,7 @@ UniValue addcvn(const UniValue& params, bool fHelp)
             "addcvn \"nodeId\" \"timestamp\" \"pubkey\" [\"n:sigs\",...]\n"
             "\nAdd a new CVN to the FairCoin network\n"
             "\nArguments:\n"
-            "1. \"nodeId\"       (int, required) The node ID (in decimal) of the new CVN.\n"
+            "1. \"nodeId\"       (int, required) The node ID (in hex) of the new CVN.\n"
             "2. \"timestamp\"    (int, required) The time of block creation.\n"
             "2. \"pubkey\"       (string, required) The public key of the CVN (in hex).\n"
             "3. \"n:sigs\"       (string, required) The admin signatures prefix by the signer ID (n)\n"
@@ -469,7 +468,7 @@ UniValue addcvn(const UniValue& params, bool fHelp)
              "}\n"
             "\nExamples:\n"
             "\nAdd a new CVN\n"
-            + HelpExampleCli("addcvn", "123488 \"04...00\" [\"1:a1b5..9093\",\"3:0432..12aa\"]")
+            + HelpExampleCli("addcvn", "0x123488 \"04...00\" [\"1:a1b5..9093\",\"3:0432..12aa\"]")
         );
 
     LOCK(cs_main);
@@ -497,7 +496,7 @@ UniValue addcvn(const UniValue& params, bool fHelp)
     block.nTime          = nTime;
     block.hashPrevBlock  = pindexPrev->GetBlockHash();
     block.nHeight        = pindexPrev->nHeight + 1;
-    block.nCreatorId     = 0xc001d00d;
+    block.nCreatorId     = nCvnNodeId;
 
     Consensus::Params p = Params().GetConsensus();
 
@@ -513,11 +512,11 @@ UniValue addcvn(const UniValue& params, bool fHelp)
     CCvnInfo cvn(nNodeId, vPubKey);
     block.vCvns[index++] = cvn;
 
-    block.hashMerkleRoot = block.HashCVNs();
+    block.hashMerkleRoot = BlockMerkleRoot(block);
 
     SignCvnBlock(block, sigs);
 
-    LogPrintf("Test: %s\n", block.ToString());
+    LogPrintf("CVN block: %s\n", block.ToString());
 
     LogPrintf("about to added CVN 0x%08x (%u) with pubKey %s (%s) to the network\n", nNodeId, nNodeId, HexStr(vPubKey), address.ToString());
     ProcessNewCvnBlock(&block, Params());

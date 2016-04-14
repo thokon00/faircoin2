@@ -477,6 +477,11 @@ void RunCertifiedValidationNode(bool fGenerate, const CChainParams& chainparams)
     if (!fGenerate)
         return;
 
+    if (!nCvnNodeId) {
+        LogPrintf("Not starting CVN thread. CVN not configured.\n");
+        return;
+    }
+
     minerThreads = new boost::thread_group();
     minerThreads->create_thread(boost::bind(&CertifiedValidationNode, boost::cref(chainparams)));
 }

@@ -1150,12 +1150,15 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         LogPrintf("Starting CVN node with ID 0x%08x\n", nCvnNodeId);
         uiInterface.InitMessage(_("Starting CVN node..."));
 
-        std::string strCvnPrivKey = GetArg("-cvnprivkey", "");
+        // we validate the private key if no smart card is used
+        if (!GetBoolArg("-usesmartcard", false)) {
+            std::string strCvnPrivKey = GetArg("-cvnprivkey", "");
 
-        CBitcoinSecret testSecret;
-        if (!testSecret.SetString(strCvnPrivKey)) {
-            nCvnNodeId = 0;
-            return InitError("invalid CVN private key supplied\n");
+            CBitcoinSecret testSecret;
+            if (!testSecret.SetString(strCvnPrivKey)) {
+                nCvnNodeId = 0;
+                return InitError("invalid CVN private key supplied\n");
+            }
         }
     }
 

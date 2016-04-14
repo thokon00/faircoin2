@@ -40,12 +40,12 @@ uint256 CDynamicChainParams::GetHash() const
     return SerializeHash(*this);
 }
 
-bool CBlockSignature::IsValid(const Consensus::Params& params, const uint256 hash, const uint32_t nCvnNodeId) const
+bool CBlockSignature::IsValid(const Consensus::Params& params, const uint256 hash) const
 {
-    std::map<uint32_t, CCvnInfo>::const_iterator it = params.mapCVNs.find(nCvnNodeId);
+    std::map<uint32_t, CCvnInfo>::const_iterator it = params.mapCVNs.find(nSignerId);
 
     if (it == params.mapCVNs.end()) {
-        LogPrintf("ERROR: could not find CvnInfo for signer ID 0x%08x\n", nCvnNodeId);
+        LogPrintf("ERROR: could not find CvnInfo for signer ID 0x%08x\n", nSignerId);
         return false;
     }
 
@@ -54,7 +54,7 @@ bool CBlockSignature::IsValid(const Consensus::Params& params, const uint256 has
     bool ret = pubKey.Verify(hash, vSignature);
 
     if (!ret)
-        LogPrintf("could not verify sig %s for hash %s for node Id 0x%08x\n", HexStr(vSignature), hash.ToString(), nCvnNodeId);
+        LogPrintf("could not verify sig %s for hash %s for node Id 0x%08x\n", HexStr(vSignature), hash.ToString(), nSignerId);
 
     return ret;
 }
@@ -75,7 +75,7 @@ std::string CBlockSignature::ToString() const
     s << strprintf("CBlockSignature(signerId=%u, ver=%d, sig=%s)",
         nSignerId,
         nVersion,
-        GetSignatureHex().substr(0, 30));
+        GetSignatureHex()); //TODO: limit again .substr(0, 30));
     return s.str();
 }
 

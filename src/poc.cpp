@@ -14,11 +14,15 @@
 
 #ifdef USE_OPENSC
 #include "pkcs11/pkcs11.h"
+#include <secp256k1.h>
 
 extern "C" CK_RV C_UnloadModule(void *module);
 extern "C" void *C_LoadModule(const char *mspec, CK_FUNCTION_LIST_PTR_PTR funcs);
 static void *module = NULL;
 static CK_FUNCTION_LIST_PTR p11 = NULL;
+static CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
+static CK_OBJECT_HANDLE key = CK_INVALID_HANDLE;
+static CK_MECHANISM mech;
 
 #if defined(WIN32)
 static std::string defaultPkcs11ModulePath = "";
@@ -30,9 +34,102 @@ static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-p
 
 bool fSmartCardUnlocked = false;
 
+static void cleanup_p11()
+{
+    if (p11)
+        p11->C_Finalize(NULL_PTR);
+    if (module)
+        C_UnloadModule(module);
+}
+
+static int find_object(CK_SESSION_HANDLE sess, CK_OBJECT_CLASS cls,
+        CK_OBJECT_HANDLE_PTR ret,
+        const unsigned char *id, size_t id_len, int obj_index)
+{
+    CK_ATTRIBUTE attrs[2];
+    unsigned int nattrs = 0;
+    CK_ULONG count;
+    CK_RV rv;
+    int i;
+
+    attrs[0].type = CKA_CLASS;
+    attrs[0].pValue = &cls;
+    attrs[0].ulValueLen = sizeof(cls);
+    nattrs++;
+    if (id) {
+        attrs[nattrs].type = CKA_ID;
+        attrs[nattrs].pValue = (void *) id;
+        attrs[nattrs].ulValueLen = id_len;
+        nattrs++;
+    }
+
+    rv = p11->C_FindObjectsInit(sess, attrs, nattrs);
+    if (rv != CKR_OK) {
+        std::cout << "C_FindObjectsInit" << std::endl;
+        goto done;
+    }
+
+    for (i = 0; i < obj_index; i++) {
+        rv = p11->C_FindObjects(sess, ret, 1, &count);
+        if (rv != CKR_OK) {
+            printf("C_FindObjects\n");
+            goto done;
+        }
+        if (count == 0)
+            goto done;
+    }
+    rv = p11->C_FindObjects(sess, ret, 1, &count);
+    if (rv != CKR_OK) {
+        printf("C_FindObjects\n");
+        goto done;
+    }
+
+done:
+    if (count == 0)
+        *ret = CK_INVALID_HANDLE;
+
+    p11->C_FindObjectsFinal(sess);
+
+    return count;
+}
+
 bool SignBlockWithSmartCard(const uint256& hashUnsignedBlock, const Consensus::Params& params, CBlockSignature& signature)
 {
-    throw "TBI";
+    CK_ULONG nSigLen = 64;
+    secp256k1_ecdsa_signature sig;
+
+    CK_RV rv = p11->C_SignInit(session, &mech, key);
+    if (rv != CKR_OK) {
+        LogPrintf("SignBlockWithSmartCard : ERROR: C_SignInit: %08x\n", (unsigned int)rv);
+        return false;
+    }
+
+    rv =  p11->C_Sign(session,
+            (unsigned char*) hashUnsignedBlock.begin(), hashUnsignedBlock.size(),
+            (unsigned char*) &sig, &nSigLen);
+
+    if (rv != CKR_OK) {
+        LogPrintf("SignBlockWithSmartCard : ERROR: C_Sign: %08x\n", (unsigned int)rv);
+        return false;
+    }
+
+    size_t nSigLenDER = 72;
+    signature.vSignature.resize(nSigLenDER);
+
+    secp256k1_context* tmp_secp256k1_context_sign = NULL;
+    secp256k1_ecdsa_signature_serialize_der(tmp_secp256k1_context_sign, (unsigned char *) &signature.vSignature[0], &nSigLenDER, &sig);
+
+    if (!signature.IsValid(params, hashUnsignedBlock)) {
+        LogPrintf("SignBlockWithSmartCard : created invalid signature %u\n", nSigLen);
+        return false;
+    }
+
+    LogPrintf("SignBlockWithSmartCard : OK\n  Hash: %s\n  node: 0x%08x\n  pubk: %s\n   sig: %s\n",
+            hashUnsignedBlock.ToString(), nCvnNodeId,
+            HexStr(params.mapCVNs.find(nCvnNodeId)->second.vPubKey),
+            HexStr(signature.vSignature));
+
+    return true;
 }
 
 #endif // USE_OPENSC
@@ -51,7 +148,7 @@ bool SignBlockWithKey(const uint256& hashUnsignedBlock, const Consensus::Params&
         return false;
     }
 
-    if (!signature.IsValid(params, hashUnsignedBlock, nCvnNodeId)) {
+    if (!signature.IsValid(params, hashUnsignedBlock)) {
         LogPrint("cvn", "SignBlockWithKey : created invalid signature\n");
         return false;
     }
@@ -133,6 +230,8 @@ bool CheckDynamicChainParameters(const CDynamicChainParams& params)
 
 void UpdateChainParameters(const CBlock* pblock)
 {
+    LogPrint("cvn", "UpdateChainParameters : updating dynamic block chain parameters\n");
+
     if (!pblock->HasChainParameters()) {
         LogPrintf("UpdateChainParameters : ERROR, block is not of type 'chain parameter'\n");
         return;
@@ -143,7 +242,7 @@ void UpdateChainParameters(const CBlock* pblock)
     dynParams.nBlockSpacing = pblock->dynamicChainParams.nBlockSpacing;
     dynParams.nDustThreshold = pblock->dynamicChainParams.nDustThreshold;
     dynParams.nMaxCvnSigners = pblock->dynamicChainParams.nMaxCvnSigners;
-    dynParams.nMinCvnSigners = pblock->dynamicChainParams.nBlockSpacing;
+    dynParams.nMinCvnSigners = pblock->dynamicChainParams.nMinCvnSigners;
 }
 
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params& params)
@@ -154,8 +253,8 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
 
     uint32_t i = 0;
     BOOST_FOREACH(CBlockSignature signature, block.vSignatures) {
-        if (!block.vSignatures[i++].IsValid(params, unsignedHash, nCvnNodeId))
-            return error("signature %u : %s is invalid\n", i, HexStr(block.vSignatures[i - 1].vSignature));
+        if (!block.vSignatures[i++].IsValid(params, unsignedHash))
+            return error("signature %u : %s is invalid", i, HexStr(block.vSignatures[i - 1].vSignature));
     }
 
     return true;
@@ -166,6 +265,54 @@ void static CCVNSignerThread(const CChainParams& chainparams)
     LogPrintf("CVN signer thread started\n");
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
     RenameThread("CVN-signer");
+
+#ifdef USE_OPENSC
+    CK_BYTE opt_object_id[1];
+    CK_RV rv;
+
+    std::string pkcs11module = GetArg("-pkcs11module", defaultPkcs11ModulePath);
+    static const char * opt_module = pkcs11module.c_str();
+
+    module = C_LoadModule(opt_module, &p11);
+    if (module == NULL) {
+        LogPrintf("Failed to load pkcs11 module\n");
+        return;
+    }
+
+    rv = p11->C_Initialize(NULL);
+    if (rv == CKR_CRYPTOKI_ALREADY_INITIALIZED) {
+        LogPrintf("library has already been initialized\n");
+    } else if (rv != CKR_OK) {
+        LogPrintf("error initializing pkcs11 framework\n");
+        return;
+    }
+
+    LogPrintf("OpenSC successfully initialized using pkcs11 module at %s\n", opt_module);
+
+    rv = p11->C_OpenSession(GetArg("-cvnslot", 0), CKF_SERIAL_SESSION | CKF_RW_SESSION, NULL, NULL, &session);
+    if (rv != CKR_OK) {
+        LogPrintf("could not open session: %04x\n", (unsigned int)rv);
+        cleanup_p11();
+        return;
+    }
+
+    rv = p11->C_Login(session, CKU_USER,(CK_UTF8CHAR *) GetArg("-cvnpin", "").c_str(), 6);
+    if (rv != CKR_OK) {
+        LogPrintf("C_Login\n");
+        cleanup_p11();
+        return;
+    }
+
+    opt_object_id[0] = GetArg("-cvnkeyid", 1);
+    if (!find_object(session, CKO_PRIVATE_KEY, &key, opt_object_id, 1, 0)){
+        LogPrintf("Private key not found\n");
+        cleanup_p11();
+        return;
+    }
+
+    memset(&mech, 0, sizeof(mech));
+    mech.mechanism = CKM_ECDSA;
+#endif
 
     try {
         /* Get
