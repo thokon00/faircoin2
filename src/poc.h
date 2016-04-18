@@ -21,8 +21,10 @@
 
 extern uint32_t nCvnNodeId;
 extern CCriticalSection cs_mapCVNs;
+extern std::map<uint32_t, CCvnInfo> mapCVNs;
 
-bool SignBlock(const uint256& hashUnsignedBlock, const Consensus::Params& params, CBlockSignature& signature);
+bool SignBlock(const uint256& hashUnsignedBlock, CBlockSignature& signature);
+bool CheckBlockSignature(const uint256 &hash, const CBlockSignature &sig);
 
 /** Check whether a block hash satisfies the proof-of-cooperation requirements */
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&);

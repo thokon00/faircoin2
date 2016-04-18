@@ -1295,11 +1295,10 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     // ********************************************************* Step 7: load block chain
 
     // initialize CVN and chain parameters
-    LogPrintf("Initialize CVN and chain parameters... ");
+    LogPrintf("Initialize CVN and chain parameters\n");
     CBlock genesis = chainparams.GenesisBlock();
     UpdateCvnInfo(&genesis);
     UpdateChainParameters(&genesis);
-    LogPrintf("done.(%u)\n", dynParams.nBlockSpacing);
 
     fReindex = GetBoolArg("-reindex", false);
 

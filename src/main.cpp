@@ -1812,6 +1812,11 @@ bool DisconnectBlock(const CBlock& block, CValidationState& state, const CBlockI
     if (pfClean)
         *pfClean = false;
 
+    if (!block.HasTx()) {
+        *pfClean = true;
+        return true;
+    }
+
     bool fClean = true;
 
     CBlockUndo blockUndo;
@@ -2010,13 +2015,15 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTime1 = GetTimeMicros(); nTimeCheck += nTime1 - nTimeStart;
     LogPrint("bench", "    - Sanity checks: %.2fms [%.2fs]\n", 0.001 * (nTime1 - nTimeStart), nTimeCheck * 0.000001);
 
+    if (block.HasTx()) {
+
     BOOST_FOREACH(const CTransaction& tx, block.vtx) {
         const CCoins* coins = view.AccessCoins(tx.GetHash());
         if (coins && !coins->IsPruned())
             return state.DoS(100, error("ConnectBlock(): tried to overwrite transaction"),
                              REJECT_INVALID, "bad-txns-BIP30");
     }
-
+    }
     // BIP16 didn't become active until Apr 1 2012
     int64_t nBIP16SwitchTime = 1333238400;
     bool fStrictPayToScriptHash = (pindex->GetBlockTime() >= nBIP16SwitchTime);
@@ -2048,7 +2055,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CDiskTxPos pos(pindex->GetBlockPos(), GetSizeOfCompactSize(block.vtx.size()));
     std::vector<std::pair<uint256, CDiskTxPos> > vPos;
     vPos.reserve(block.vtx.size());
-    blockundo.vtxundo.reserve(block.vtx.size() - 1);
+    if (block.HasTx())
+        blockundo.vtxundo.reserve(block.vtx.size() - 1);
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = block.vtx[i];
@@ -2099,7 +2107,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     LogPrint("bench", "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs]\n", (unsigned)block.vtx.size(), 0.001 * (nTime3 - nTime2), 0.001 * (nTime3 - nTime2) / block.vtx.size(), nInputs <= 1 ? 0 : 0.001 * (nTime3 - nTime2) / (nInputs-1), nTimeConnect * 0.000001);
 
     CAmount blockReward = nFees;
-    if (block.vtx[0].GetValueOut() > blockReward)
+    if (block.HasTx() && block.vtx[0].GetValueOut() > blockReward)
         return state.DoS(100,
                          error("ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)",
                                block.vtx[0].GetValueOut(), blockReward),
@@ -2107,7 +2115,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     if (!control.Wait())
         return state.DoS(100, false);
-    int64_t nTime4 = GetTimeMicros(); nTimeVerify += nTime4 - nTime2;
+    uint64_t nTime4 = GetTimeMicros(); nTimeVerify += nTime4 - nTime2;
     LogPrint("bench", "    - Verify %u txins: %.2fms (%.3fms/txin) [%.2fs]\n", nInputs - 1, 0.001 * (nTime4 - nTime2), nInputs <= 1 ? 0 : 0.001 * (nTime4 - nTime2) / (nInputs-1), nTimeVerify * 0.000001);
 
     if (fJustCheck)
@@ -2142,10 +2150,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTime5 = GetTimeMicros(); nTimeIndex += nTime5 - nTime4;
     LogPrint("bench", "    - Index writing: %.2fms [%.2fs]\n", 0.001 * (nTime5 - nTime4), nTimeIndex * 0.000001);
 
-    // Watch for changes to the previous coinbase transaction.
-    static uint256 hashPrevBestCoinBase;
-    GetMainSignals().UpdatedTransaction(hashPrevBestCoinBase);
-    hashPrevBestCoinBase = block.vtx[0].GetHash();
+    if (block.HasTx()) {
+        // Watch for changes to the previous coinbase transaction.
+        static uint256 hashPrevBestCoinBase;
+        GetMainSignals().UpdatedTransaction(hashPrevBestCoinBase);
+        hashPrevBestCoinBase = block.vtx[0].GetHash();
+    }
 
     int64_t nTime6 = GetTimeMicros(); nTimeCallbacks += nTime6 - nTime5;
     LogPrint("bench", "    - Callbacks: %.2fms [%.2fs]\n", 0.001 * (nTime6 - nTime5), nTimeCallbacks * 0.000001);
@@ -2765,7 +2775,7 @@ CBlockIndex* AddToBlockIndex(const CBlockHeader& block)
 /** Mark a block as having its data received and checked (up to BLOCK_VALID_TRANSACTIONS). */
 bool ReceivedBlockTransactions(const CBlock &block, CValidationState& state, CBlockIndex *pindexNew, const CDiskBlockPos& pos)
 {
-    pindexNew->nTx = block.vtx.size();
+    pindexNew->nTx = block.HasTx() ? block.vtx.size() : 1; // CVN blocks and chain params blocks count 1 tx
     pindexNew->nChainTx = 0;
     pindexNew->nFile = pos.nFile;
     pindexNew->nDataPos = pos.nPos;
@@ -3462,8 +3472,6 @@ bool static LoadBlockIndexDB()
         // We can link the chain of blocks for which we've received transactions at some point.
         // Pruned nodes may have deleted the block.
 
-        //LogPrintf("TEST: %s\n", mapblo);
-
         if (pindex->nTx > 0) {
             if (pindex->pprev) {
                 if (pindex->pprev->nChainTx) {
@@ -3561,6 +3569,44 @@ CVerifyDB::~CVerifyDB()
     uiInterface.ShowProgress("", 100);
 }
 
+bool CVerifyDB::SetMostRecentCVNData(const CChainParams& chainparams, CBlockIndex* pindexStart)
+{
+    bool fFoundCvnInfoBlock = false, fFoundDynamicChainParamsBlock = false;
+
+    for (CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev)
+    {
+        if (pindex->nVersion & (CBlock::CVN_BLOCK | CBlock::CHAIN_PARAMETER_BLOCK)) {
+            CBlock block;
+            // check level 0: read from disk
+            if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus()))
+                return error("SetMostrecentCVNData(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
+
+            if (!fFoundCvnInfoBlock && block.HasCvnInfo()) {
+                UpdateCvnInfo(&block);
+
+                fFoundCvnInfoBlock = true;
+            }
+
+            if (!fFoundDynamicChainParamsBlock && block.HasChainParameters()) {
+                UpdateChainParameters(&block);
+
+                fFoundDynamicChainParamsBlock = true;
+            }
+        }
+
+        if (fFoundCvnInfoBlock && fFoundDynamicChainParamsBlock)
+            return true;
+    }
+
+    if (!fFoundCvnInfoBlock)
+        LogPrintf("SetMostRecentCVNData(): *** could not find a CvnInfo block. Can not continue.\n");
+
+    if (!fFoundDynamicChainParamsBlock)
+        LogPrintf("SetMostRecentCVNData(): *** could not find a chain params block. Can not continue.\n");
+
+    return false;
+}
+
 bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview, int nCheckLevel, int nCheckDepth)
 {
     LOCK(cs_main);
@@ -3579,7 +3625,9 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
     CBlockIndex* pindexFailure = NULL;
     int nGoodTransactions = 0;
     CValidationState state;
-    bool fFoundCvnInfoBlock = false, fFoundDynamicChainParamsBlock = false;
+
+    SetMostRecentCVNData(chainparams, chainActive.Tip());
+
     for (CBlockIndex* pindex = chainActive.Tip(); pindex && pindex->pprev; pindex = pindex->pprev)
     {
         boost::this_thread::interruption_point();
@@ -3591,16 +3639,8 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
         if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus()))
             return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
         // find the most recent CVN and ChainParams block
-        if (block.nVersion & (CBlock::CVN_BLOCK | CBlock::CHAIN_PARAMETER_BLOCK)) {
-        	if (!fFoundCvnInfoBlock && (block.nVersion & CBlock::CVN_BLOCK)) {
-        		UpdateCvnInfo(&block);
-        		fFoundCvnInfoBlock = true;
-        	}
-        	if (!fFoundDynamicChainParamsBlock && (block.nVersion & CBlock::CHAIN_PARAMETER_BLOCK)) {
-        		UpdateChainParameters(&block);
-        		fFoundDynamicChainParamsBlock = true;
-        	}
-        }
+        if (pindex->pprev && (block.HasCvnInfo() || block.HasChainParameters()))
+            SetMostRecentCVNData(chainparams, pindex->pprev);
         // check level 1: verify block validity
         if (nCheckLevel >= 1 && !CheckBlock(block, state))
             return error("VerifyDB(): *** found bad block at %d, hash=%s\n", pindex->nHeight, pindex->GetBlockHash().ToString());
@@ -3646,11 +3686,8 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
         }
     }
 
-    if (!fFoundCvnInfoBlock)
-    	return error("VerifyDB(): *** could not find a CvnInfo block. Can not continue.\n");
-
-    if (!fFoundDynamicChainParamsBlock)
-    	return error("VerifyDB(): *** could not find a chain params block. Can not continue.\n");
+    // finally set up the current chain environment
+    SetMostRecentCVNData(chainparams, chainActive.Tip());
 
     LogPrintf("No coin database inconsistencies in last %i blocks (%i transactions)\n", chainActive.Height() - pindexState->nHeight, nGoodTransactions);
 

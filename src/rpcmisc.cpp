@@ -402,16 +402,27 @@ UniValue setmocktime(const UniValue& params, bool fHelp)
 
 static bool ProcessNewCvnBlock(const CBlock* pblock, const CChainParams& chainparams)
 {
-	if (pblock->hashPrevBlock != chainActive.Tip()->GetBlockHash())
-		return error("ProcessNewCvnBlock: cvn block is stale");
+	if (pblock->hashPrevBlock != chainActive.Tip()->GetBlockHash()) {
+	    LogPrintf("ProcessNewCvnBlock: cvn block is stale\n");
+		return false;
+	}
 
     // Inform about the new block
     GetMainSignals().BlockFound(pblock->GetHash());
 
     // Process this block the same as if we had received it from another node
+    try
+    {
     CValidationState state;
-    if (!ProcessNewBlock(state, chainparams, NULL, pblock, true, NULL))
-        return error("ProcessNewCvnBlock: ProcessNewCvnBlock, block not accepted");
+    if (!ProcessNewBlock(state, chainparams, NULL, pblock, true, NULL)) {
+        LogPrintf("ProcessNewCvnBlock: ProcessNewCvnBlock, block not accepted\n");
+        return false;
+    }
+    } catch (const std::exception& e) {
+        PrintExceptionContinue(&e, "ProcessNewCvnBlock()");
+    } catch (...) {
+        PrintExceptionContinue(NULL, "ProcessNewCvnBlock()");
+    }
 
     return true;
 }
@@ -427,7 +438,7 @@ static void SignCvnBlock(CBlock &block, const UniValue& sigs)
             strprintf("too many signatures supplied %u (%u max)\nReduce the number", sigs.size(), (size_t)dynParams.nMaxCvnSigners));
 
     block.vSignatures.resize(sigs.size());
-    uint256 unsignedHash = block.GetUnsignedHash();
+    uint256 hashUnsignedBlock = block.GetUnsignedHash();
 
     for (uint32_t i = 0 ; i < sigs.size() ; i++)
     {
@@ -441,7 +452,7 @@ static void SignCvnBlock(CBlock &block, const UniValue& sigs)
         uint32_t signerId = atol(vTokens[0].c_str());
         block.vSignatures[i] = CBlockSignature(signerId, ParseHex(vTokens[1]));
 
-        if (!block.vSignatures[i].IsValid(Params().GetConsensus(), unsignedHash))
+        if (!CheckBlockSignature(hashUnsignedBlock, block.vSignatures[i]))
             LogPrintf("signature %u : %s is invalid\n", i + 1, HexStr(block.vSignatures[i].vSignature));
     }
 }
@@ -498,13 +509,11 @@ UniValue addcvn(const UniValue& params, bool fHelp)
     block.nHeight        = pindexPrev->nHeight + 1;
     block.nCreatorId     = nCvnNodeId;
 
-    Consensus::Params p = Params().GetConsensus();
-
-    block.vCvns.resize(p.mapCVNs.size() + 1);
+    block.vCvns.resize(mapCVNs.size() + 1);
 
     uint32_t index = 0;
     typedef std::map<uint32_t, CCvnInfo> CvnMapType;
-    BOOST_FOREACH(const CvnMapType::value_type& cvn, p.mapCVNs)
+    BOOST_FOREACH(const CvnMapType::value_type& cvn, mapCVNs)
     {
     	block.vCvns[index++] = cvn.second;
     };
@@ -576,4 +585,27 @@ UniValue removecvn(const UniValue& params, bool fHelp)
     result.push_back(Pair("pubKey", HexStr(vPubKey)));
 
     return result;
+}
+
+UniValue signunsignedblock(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "signunsignedblock \"unsignedblockhash\"\n"
+            "\nCreates a signature of an unsigned block\n"
+            "\nArguments:\n"
+            "1. \"unsignedblockhash\"       (string, required) The hash of an unsigned block.\n"
+            "\nExamples:\n"
+            "\nCreate a signature\n"
+            + HelpExampleCli("signunsignedblock", "a1b5..9093")
+        );
+
+    LOCK(cs_main);
+
+    uint256 hashUnsignedBlock = uint256S(params[0].get_str());
+
+    CBlockSignature signature;
+    SignBlock(hashUnsignedBlock, signature);
+
+    return HexStr(signature.vSignature);
 }

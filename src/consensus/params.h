@@ -25,8 +25,6 @@ struct Params {
 
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
-
-    std::map<uint32_t, CCvnInfo> mapCVNs;
 };
 } // namespace Consensus
 

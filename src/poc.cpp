@@ -12,6 +12,10 @@
 #include <boost/thread.hpp>
 #include <stdio.h>
 
+CCriticalSection cs_mapCVNs;
+uint32_t nCvnNodeId = 0;
+std::map<uint32_t, CCvnInfo> mapCVNs;
+
 #ifdef USE_OPENSC
 #include "pkcs11/pkcs11.h"
 #include <secp256k1.h>
@@ -93,14 +97,14 @@ done:
     return count;
 }
 
-bool SignBlockWithSmartCard(const uint256& hashUnsignedBlock, const Consensus::Params& params, CBlockSignature& signature)
+bool SignBlockWithSmartCard(const uint256& hashUnsignedBlock, CBlockSignature& signature)
 {
     CK_ULONG nSigLen = 64;
     secp256k1_ecdsa_signature sig;
 
     CK_RV rv = p11->C_SignInit(session, &mech, key);
     if (rv != CKR_OK) {
-        LogPrintf("SignBlockWithSmartCard : ERROR: C_SignInit: %08x\n", (unsigned int)rv);
+        LogPrintf("SignBlockWithSmartCard : ERROR, could not create signature with smart card(init): %08x\n", (unsigned int)rv);
         return false;
     }
 
@@ -109,24 +113,29 @@ bool SignBlockWithSmartCard(const uint256& hashUnsignedBlock, const Consensus::P
             (unsigned char*) &sig, &nSigLen);
 
     if (rv != CKR_OK) {
-        LogPrintf("SignBlockWithSmartCard : ERROR: C_Sign: %08x\n", (unsigned int)rv);
+        LogPrintf("SignBlockWithSmartCard : ERROR, could not create signature with smart card: %08x\n", (unsigned int)rv);
         return false;
     }
 
+    std::reverse(sig.data, sig.data + 32);
+    std::reverse(&sig.data[32], &sig.data[32] + 32);
+
     size_t nSigLenDER = 72;
-    signature.vSignature.resize(nSigLenDER);
+    signature.vSignature.resize(72);
 
     secp256k1_context* tmp_secp256k1_context_sign = NULL;
-    secp256k1_ecdsa_signature_serialize_der(tmp_secp256k1_context_sign, (unsigned char *) &signature.vSignature[0], &nSigLenDER, &sig);
+    secp256k1_ecdsa_signature_serialize_der(tmp_secp256k1_context_sign, &signature.vSignature[0], &nSigLenDER, &sig);
 
-    if (!signature.IsValid(params, hashUnsignedBlock)) {
-        LogPrintf("SignBlockWithSmartCard : ERROR: created invalid signature %u\n", nSigLen);
+    signature.vSignature.resize(nSigLenDER);
+
+    if (!CheckBlockSignature(hashUnsignedBlock, signature)) {
+        LogPrintf("SignBlockWithSmartCard : ERROR: created invalid signature\n");
         return false;
     }
 
     LogPrintf("SignBlockWithSmartCard : OK\n  Hash: %s\n  node: 0x%08x\n  pubk: %s\n   sig: %s\n",
             hashUnsignedBlock.ToString(), nCvnNodeId,
-            HexStr(params.mapCVNs.find(nCvnNodeId)->second.vPubKey),
+            HexStr(mapCVNs.find(nCvnNodeId)->second.vPubKey),
             HexStr(signature.vSignature));
 
     return true;
@@ -134,10 +143,7 @@ bool SignBlockWithSmartCard(const uint256& hashUnsignedBlock, const Consensus::P
 
 #endif // USE_OPENSC
 
-CCriticalSection cs_mapCVNs;
-uint32_t nCvnNodeId = 0;
-
-bool SignBlockWithKey(const uint256& hashUnsignedBlock, const Consensus::Params& params, const std::string strCvnPrivKey, CBlockSignature& signature)
+bool SignBlockWithKey(const uint256& hashUnsignedBlock, const std::string strCvnPrivKey, CBlockSignature& signature)
 {
     CBitcoinSecret secret;
     secret.SetString(strCvnPrivKey);
@@ -148,20 +154,20 @@ bool SignBlockWithKey(const uint256& hashUnsignedBlock, const Consensus::Params&
         return false;
     }
 
-    if (!signature.IsValid(params, hashUnsignedBlock)) {
+    if (!CheckBlockSignature(hashUnsignedBlock, signature)) {
         LogPrint("cvn", "SignBlockWithKey : created invalid signature\n");
         return false;
     }
 
     LogPrintf("SignBlockWithKey : OK\n  Hash: %s\n  node: 0x%08x\n  pubk: %s\n   sig: %s\n",
             hashUnsignedBlock.ToString(), nCvnNodeId,
-            HexStr(params.mapCVNs.find(nCvnNodeId)->second.vPubKey),
+            HexStr(mapCVNs.find(nCvnNodeId)->second.vPubKey),
             HexStr(signature.vSignature));
 
     return true;
 }
 
-bool SignBlock(const uint256& hashUnsignedBlock, const Consensus::Params& params, CBlockSignature& signature)
+bool SignBlock(const uint256& hashUnsignedBlock, CBlockSignature& signature)
 {
     if (!nCvnNodeId) {
         LogPrint("cvn", "SignBlock : CVN node not initialized\n");
@@ -172,7 +178,7 @@ bool SignBlock(const uint256& hashUnsignedBlock, const Consensus::Params& params
 
     if (GetBoolArg("-usesmartcard", false)) {
 #ifdef USE_OPENSC
-        return SignBlockWithSmartCard(hashUnsignedBlock, params, signature);
+        return SignBlockWithSmartCard(hashUnsignedBlock, signature);
 #else
         LogPrintf("SignBlock : ERROR, this wallet was not compile with smart card support\n");
         return false;
@@ -185,14 +191,24 @@ bool SignBlock(const uint256& hashUnsignedBlock, const Consensus::Params& params
             return false;
         }
 
-        return SignBlockWithKey(hashUnsignedBlock, params, strCvnPrivKey, signature);
+        return SignBlockWithKey(hashUnsignedBlock, strCvnPrivKey, signature);
     }
 
     return false;
 }
 
+void PrintAllCVNs()
+{
+    typedef std::map<uint32_t, CCvnInfo> CvnMapType;
+    BOOST_FOREACH(const CvnMapType::value_type& cvn, mapCVNs) {
+        LogPrintf("%s\n", cvn.second.ToString());
+    }
+}
+
 void UpdateCvnInfo(const CBlock* pblock)
 {
+    LogPrint("cvn", "UpdateCvnInfo : updating CVN data\n");
+
     if (!pblock->HasCvnInfo()) {
         LogPrint("cvn", "UpdateCvnInfo : ERROR, block is not of type CVN\n");
         return;
@@ -200,12 +216,13 @@ void UpdateCvnInfo(const CBlock* pblock)
 
     LOCK(cs_mapCVNs);
 
-    std::map<uint32_t, CCvnInfo> mapCVNs = Params().GetConsensus().mapCVNs;
     mapCVNs.clear();
 
     BOOST_FOREACH(CCvnInfo cvnInfo, pblock->vCvns) {
         mapCVNs.insert(std::make_pair(cvnInfo.nNodeId, cvnInfo));
     }
+
+    PrintAllCVNs();
 }
 
 bool CheckDynamicChainParameters(const CDynamicChainParams& params)
@@ -247,26 +264,41 @@ void UpdateChainParameters(const CBlock* pblock)
 
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params& params)
 {
-    uint256 unsignedHash = block.GetUnsignedHash();
+    uint256 hashUnsignedBlock = block.GetUnsignedHash();
 
     LogPrint("cvn", "CheckProofOfCooperation : checking signatures\n");
 
     uint32_t i = 0;
     BOOST_FOREACH(CBlockSignature signature, block.vSignatures) {
-        if (!block.vSignatures[i++].IsValid(params, unsignedHash))
+        if (!CheckBlockSignature(hashUnsignedBlock, block.vSignatures[i++]))
             return error("signature %u : %s is invalid", i, HexStr(block.vSignatures[i - 1].vSignature));
     }
 
     return true;
 }
 
-void static CCVNSignerThread(const CChainParams& chainparams)
+bool CheckBlockSignature(const uint256 &hash, const CBlockSignature &sig)
 {
-    LogPrintf("CVN signer thread started\n");
-    SetThreadPriority(THREAD_PRIORITY_LOWEST);
-    RenameThread("CVN-signer");
+    std::map<uint32_t, CCvnInfo>::iterator it = mapCVNs.find(sig.nSignerId);
+
+    if (it == mapCVNs.end()) {
+        LogPrintf("ERROR: could not find CvnInfo for signer ID 0x%08x\n", sig.nSignerId);
+        return false;
+    }
+
+    CPubKey pubKey = CPubKey(it->second.vPubKey);
+
+    bool ret = pubKey.Verify(hash, sig.vSignature);
+
+    if (!ret)
+        LogPrintf("could not verify sig %s for hash %s for node Id 0x%08x\n", HexStr(sig.vSignature), hash.ToString(), sig.nSignerId);
+
+    return ret;
+}
 
 #ifdef USE_OPENSC
+void static InitSmartCard()
+{
     CK_BYTE opt_object_id[1];
     CK_RV rv;
 
@@ -312,6 +344,19 @@ void static CCVNSignerThread(const CChainParams& chainparams)
 
     memset(&mech, 0, sizeof(mech));
     mech.mechanism = CKM_ECDSA;
+
+}
+#endif //USE_OPENSC
+
+void static CCVNSignerThread(const CChainParams& chainparams)
+{
+    LogPrintf("CVN signer thread started\n");
+    SetThreadPriority(THREAD_PRIORITY_LOWEST);
+    RenameThread("CVN-signer");
+
+#ifdef USE_OPENSC
+    if (GetBoolArg("-usesmartcard", false))
+        InitSmartCard();
 #endif
 
     try {

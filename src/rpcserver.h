@@ -193,6 +193,7 @@ extern UniValue signmessage(const UniValue& params, bool fHelp);
 extern UniValue verifymessage(const UniValue& params, bool fHelp);
 extern UniValue addcvn(const UniValue& params, bool fHelp);
 extern UniValue removecvn(const UniValue& params, bool fHelp);
+extern UniValue signunsignedblock(const UniValue& params, bool fHelp);
 extern UniValue getreceivedbyaddress(const UniValue& params, bool fHelp);
 extern UniValue getreceivedbyaccount(const UniValue& params, bool fHelp);
 extern UniValue getbalance(const UniValue& params, bool fHelp);

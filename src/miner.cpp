@@ -394,7 +394,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
             CBlock *pblock = &pblocktemplate->block;
             IncrementExtraNonce(pblock, pindexPrev, nExtraNonce);
 
-            pblock->nCreatorId = 1;
+            pblock->nCreatorId = nCvnNodeId;
 
             LogPrintf("Running CertifiedValidationNode with %u transactions in block (%u bytes)\n", pblock->vtx.size(),
                 ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION));
@@ -418,7 +418,8 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
                     pblock->nHeight = pindexPrev->nHeight + 1;
 
                     CBlockSignature signature;
-                    SignBlock(pblock->GetUnsignedHash(), Params().GetConsensus(), signature);
+                    if (!SignBlock(pblock->GetUnsignedHash(), signature))
+                        break;
 
                     pblock->vSignatures.push_back(signature);
 

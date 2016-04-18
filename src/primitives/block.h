@@ -59,11 +59,7 @@ public:
         vSignature.clear();
     }
 
-    std::string GetSignatureHex() const;
-
     std::string ToString() const;
-
-    bool IsValid(const Consensus::Params& params, const uint256 hash) const;
 };
 
 class CCvnInfo
@@ -99,6 +95,8 @@ public:
     }
 
     uint256 GetHash() const;
+
+    std::string ToString() const;
 };
 
 class CDynamicChainParams

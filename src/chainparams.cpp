@@ -89,8 +89,6 @@ public:
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 
-        consensus.mapCVNs.insert(std::make_pair(genesis.vCvns[0].nNodeId, genesis.vCvns[0]));
-
         CBlockSignature genesisSignature(0xC001D00D, ParseHex("3044022064b5ca175c11ab4641979d3d5e0284cf2c57ca87fcd827243f21dadaa84fd484022079431ac904e5376742fdc53d4355748f546bb11b5b26d5461cdde1ecddee09ff"));
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 

@@ -475,6 +475,7 @@ public:
     CVerifyDB();
     ~CVerifyDB();
     bool VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview, int nCheckLevel, int nCheckDepth);
+    bool SetMostRecentCVNData(const CChainParams& chainparams, CBlockIndex* pindexStart);
 };
 
 /** Find the last common block between the parameter chain and a locator. */
