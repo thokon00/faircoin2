@@ -3579,6 +3579,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
     CBlockIndex* pindexFailure = NULL;
     int nGoodTransactions = 0;
     CValidationState state;
+    bool fFoundCvnInfoBlock = false, fFoundDynamicChainParamsBlock = false;
     for (CBlockIndex* pindex = chainActive.Tip(); pindex && pindex->pprev; pindex = pindex->pprev)
     {
         boost::this_thread::interruption_point();
@@ -3589,6 +3590,17 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
         // check level 0: read from disk
         if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus()))
             return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
+        // find the most recent CVN and ChainParams block
+        if (block.nVersion & (CBlock::CVN_BLOCK | CBlock::CHAIN_PARAMETER_BLOCK)) {
+        	if (!fFoundCvnInfoBlock && (block.nVersion & CBlock::CVN_BLOCK)) {
+        		UpdateCvnInfo(&block);
+        		fFoundCvnInfoBlock = true;
+        	}
+        	if (!fFoundDynamicChainParamsBlock && (block.nVersion & CBlock::CHAIN_PARAMETER_BLOCK)) {
+        		UpdateChainParameters(&block);
+        		fFoundDynamicChainParamsBlock = true;
+        	}
+        }
         // check level 1: verify block validity
         if (nCheckLevel >= 1 && !CheckBlock(block, state))
             return error("VerifyDB(): *** found bad block at %d, hash=%s\n", pindex->nHeight, pindex->GetBlockHash().ToString());
@@ -3633,6 +3645,12 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
                 return error("VerifyDB(): *** found unconnectable block at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
         }
     }
+
+    if (!fFoundCvnInfoBlock)
+    	return error("VerifyDB(): *** could not find a CvnInfo block. Can not continue.\n");
+
+    if (!fFoundDynamicChainParamsBlock)
+    	return error("VerifyDB(): *** could not find a chain params block. Can not continue.\n");
 
     LogPrintf("No coin database inconsistencies in last %i blocks (%i transactions)\n", chainActive.Height() - pindexState->nHeight, nGoodTransactions);
 

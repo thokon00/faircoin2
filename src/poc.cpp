@@ -120,7 +120,7 @@ bool SignBlockWithSmartCard(const uint256& hashUnsignedBlock, const Consensus::P
     secp256k1_ecdsa_signature_serialize_der(tmp_secp256k1_context_sign, (unsigned char *) &signature.vSignature[0], &nSigLenDER, &sig);
 
     if (!signature.IsValid(params, hashUnsignedBlock)) {
-        LogPrintf("SignBlockWithSmartCard : created invalid signature %u\n", nSigLen);
+        LogPrintf("SignBlockWithSmartCard : ERROR: created invalid signature %u\n", nSigLen);
         return false;
     }
 
@@ -291,21 +291,21 @@ void static CCVNSignerThread(const CChainParams& chainparams)
 
     rv = p11->C_OpenSession(GetArg("-cvnslot", 0), CKF_SERIAL_SESSION | CKF_RW_SESSION, NULL, NULL, &session);
     if (rv != CKR_OK) {
-        LogPrintf("could not open session: %04x\n", (unsigned int)rv);
+        LogPrintf("ERROR: could not open session: %04x\n", (unsigned int)rv);
         cleanup_p11();
         return;
     }
 
     rv = p11->C_Login(session, CKU_USER,(CK_UTF8CHAR *) GetArg("-cvnpin", "").c_str(), 6);
     if (rv != CKR_OK) {
-        LogPrintf("C_Login\n");
+        LogPrintf("ERROR: could not log into card (is the supplied pin correct?)\n");
         cleanup_p11();
         return;
     }
 
     opt_object_id[0] = GetArg("-cvnkeyid", 1);
     if (!find_object(session, CKO_PRIVATE_KEY, &key, opt_object_id, 1, 0)){
-        LogPrintf("Private key not found\n");
+        LogPrintf("ERROR: Private key not found (is the cvnkeyid correct?)\n");
         cleanup_p11();
         return;
     }
