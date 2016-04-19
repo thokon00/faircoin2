@@ -1813,7 +1813,8 @@ bool DisconnectBlock(const CBlock& block, CValidationState& state, const CBlockI
         *pfClean = false;
 
     if (!block.HasTx()) {
-        *pfClean = true;
+        if (pfClean)
+            *pfClean = true;
         // always move best block pointer to prevout block for CVN and chaon params blocks
         view.SetBestBlock(pindex->pprev->GetBlockHash());
         return true;
