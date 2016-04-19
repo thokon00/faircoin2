@@ -1814,6 +1814,8 @@ bool DisconnectBlock(const CBlock& block, CValidationState& state, const CBlockI
 
     if (!block.HasTx()) {
         *pfClean = true;
+        // always move best block pointer to prevout block for CVN and chaon params blocks
+        view.SetBestBlock(pindex->pprev->GetBlockHash());
         return true;
     }
 
@@ -2957,9 +2959,15 @@ bool CheckBlock(const CBlock& block, CValidationState& state, bool fCheckPOW, bo
     // transaction validation, as otherwise we may mark the header as invalid
     // because we receive the wrong transactions for it.
 
-    if (block.HasCvnInfo() && (block.vCvns.empty() || block.vCvns.size() > MAX_NUMBER_OF_CVNS))
-        return state.DoS(100, error("CheckBlock(): CVN size limits failed"),
+    if (block.HasCvnInfo()) {
+        if (block.vCvns.empty() || block.vCvns.size() > MAX_NUMBER_OF_CVNS)
+            return state.DoS(100, error("CheckBlock(): CvnInfos size limits exceeded"),
                          REJECT_INVALID, "bad-blk-length-cvn");
+
+        if (!CheckForDuplicateCvns(block))
+            return state.DoS(100, error("CheckBlock(): duplicate entries in CVN block"),
+                         REJECT_INVALID, "bad-dupl-cvn");
+    }
 
     if (block.HasChainParameters() && !CheckDynamicChainParameters(block.dynamicChainParams))
         return state.DoS(100, error("CheckBlock(): dynamicChainParams checks failed"),
@@ -3674,6 +3682,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
     // check level 4: try reconnecting blocks
     if (nCheckLevel >= 4) {
         CBlockIndex *pindex = pindexState;
+        SetMostRecentCVNData(chainparams, pindex);
         while (pindex != chainActive.Tip()) {
             boost::this_thread::interruption_point();
             uiInterface.ShowProgress(_("Verifying blocks..."), std::max(1, std::min(99, 100 - (int)(((double)(chainActive.Height() - pindex->nHeight)) / (double)nCheckDepth * 50))));
@@ -3681,8 +3690,15 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             CBlock block;
             if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus()))
                 return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
+
             if (!ConnectBlock(block, state, pindex, coins))
                 return error("VerifyDB(): *** found unconnectable block at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
+
+            if (block.HasCvnInfo())
+                UpdateCvnInfo(&block);
+
+            if (block.HasChainParameters())
+                UpdateChainParameters(&block);
         }
     }
 

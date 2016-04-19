@@ -11,6 +11,7 @@
 
 #include <boost/thread.hpp>
 #include <stdio.h>
+#include <set>
 
 CCriticalSection cs_mapCVNs;
 uint32_t nCvnNodeId = 0;
@@ -222,7 +223,7 @@ void UpdateCvnInfo(const CBlock* pblock)
         mapCVNs.insert(std::make_pair(cvnInfo.nNodeId, cvnInfo));
     }
 
-    PrintAllCVNs();
+    //PrintAllCVNs();
 }
 
 bool CheckDynamicChainParameters(const CDynamicChainParams& params)
@@ -266,13 +267,26 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
 {
     uint256 hashUnsignedBlock = block.GetUnsignedHash();
 
-    LogPrint("cvn", "CheckProofOfCooperation : checking signatures\n");
+    LogPrint("cvn", "CheckProofOfCooperation : checking signatures of block %d %s\n", block.nHeight, block.GetHash().ToString());
 
     uint32_t i = 0;
     BOOST_FOREACH(CBlockSignature signature, block.vSignatures) {
         if (!CheckBlockSignature(hashUnsignedBlock, block.vSignatures[i++]))
             return error("signature %u : %s is invalid", i, HexStr(block.vSignatures[i - 1].vSignature));
     }
+
+    return true;
+}
+
+bool CheckForDuplicateCvns(const CBlock& block)
+{
+    std::set<uint32_t> sNodeIds;
+
+    BOOST_FOREACH(const CCvnInfo &cvn, block.vCvns)
+    {
+        if (!sNodeIds.insert(cvn.nNodeId).second)
+            return error("detected duplicate CVN Id: 0x%08x", cvn.nNodeId);
+    };
 
     return true;
 }

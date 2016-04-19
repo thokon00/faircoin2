@@ -25,6 +25,7 @@ extern std::map<uint32_t, CCvnInfo> mapCVNs;
 
 bool SignBlock(const uint256& hashUnsignedBlock, CBlockSignature& signature);
 bool CheckBlockSignature(const uint256 &hash, const CBlockSignature &sig);
+bool CheckForDuplicateCvns(const CBlock& block);
 
 /** Check whether a block hash satisfies the proof-of-cooperation requirements */
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&);
