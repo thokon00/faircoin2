@@ -501,11 +501,6 @@ UniValue addcvn(const UniValue& params, bool fHelp)
     if (!pubKey.IsFullyValid())
         throw runtime_error(" Invalid public key: " + params[2].get_str());
 
-    CKeyID keyID = pubKey.GetID();
-
-    CBitcoinAddress address;
-    address.Set(keyID);
-
     const UniValue& sigs = params[3].get_array();
 
     CBlockIndex* pindexPrev = chainActive.Tip();
@@ -533,8 +528,11 @@ UniValue addcvn(const UniValue& params, bool fHelp)
 
     SignCvnBlock(block, sigs);
 
-    LogPrintf("about to added CVN 0x%08x with pubKey %s (%s) to the network\n", nNodeId, HexStr(vPubKey), address.ToString());
+    CKeyID keyID = pubKey.GetID();
+    CBitcoinAddress address;
+    address.Set(keyID);
 
+    LogPrintf("about to added CVN 0x%08x with pubKey %s (%s) to the network\n", nNodeId, HexStr(vPubKey), address.ToString());
 
     if (!ProcessNewCvnBlock(&block, Params()))
         throw runtime_error(" CvnBlock not accepted");
@@ -629,7 +627,7 @@ UniValue signunsignedblock(const UniValue& params, bool fHelp)
     uint256 hashUnsignedBlock = uint256S(params[0].get_str());
 
     CBlockSignature signature;
-    SignBlock(hashUnsignedBlock, signature);
+    SignBlock(hashUnsignedBlock, signature, nCvnNodeId);
 
     return HexStr(signature.vSignature);
 }

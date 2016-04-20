@@ -197,8 +197,8 @@ void Shutdown()
     if (pwalletMain)
         pwalletMain->Flush(false);
 #endif
-    RunCertifiedValidationNode(false, Params());
-    RunCVNSignerThread(Params());
+    RunCertifiedValidationNode(false, Params(), nCvnNodeId);
+    RunCVNSignerThread(Params(), nCvnNodeId);
     StopNode();
     StopTorControl();
     UnregisterNodeSignals(GetNodeSignals());
@@ -1684,7 +1684,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     scheduler.scheduleEvery(f, nPowTargetSpacing);
 
     // Start up a CVN (generate blocks)
-    RunCertifiedValidationNode(GetBoolArg("-gen", DEFAULT_GENERATE), chainparams);
+    RunCertifiedValidationNode(GetBoolArg("-gen", DEFAULT_GENERATE), chainparams, nCvnNodeId);
 
     // ********************************************************* Step 12: finished
 

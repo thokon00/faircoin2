@@ -62,18 +62,7 @@ public:
     }
 };
 
-int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
-{
-    int64_t nOldTime = pblock->nTime;
-    int64_t nNewTime = std::max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
-
-    if (nOldTime < nNewTime)
-        pblock->nTime = nNewTime;
-
-    return nNewTime - nOldTime;
-}
-
-CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& scriptPubKeyIn)
+static CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& scriptPubKeyIn)
 {
     // Create new block
     auto_ptr<CBlockTemplate> pblocktemplate(new CBlockTemplate());
@@ -288,7 +277,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& s
 
         // Fill in header
         pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
-        UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
         pblock->nCreatorId     = nCvnNodeId;
         pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0]);
 
@@ -301,31 +289,22 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& s
     return pblocktemplate.release();
 }
 
-void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned int& nExtraNonce)
+static void UpdateCoinbase(CBlock* pblock, const CBlockIndex* pindexPrev, const uint32_t nExtraNonce)
 {
-    // Update nExtraNonce
-    static uint256 hashPrevBlock;
-    if (hashPrevBlock != pblock->hashPrevBlock)
-    {
-        nExtraNonce = 0;
-        hashPrevBlock = pblock->hashPrevBlock;
-    }
-    ++nExtraNonce;
     uint32_t nHeight = pindexPrev->nHeight + 1; // Height first in coinbase
     CMutableTransaction txCoinbase(pblock->vtx[0]);
-    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(nExtraNonce)) + COINBASE_FLAGS;
+    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << nExtraNonce) + COINBASE_FLAGS;
     assert(txCoinbase.vin[0].scriptSig.size() <= 100);
 
     pblock->vtx[0] = txCoinbase;
     pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
 }
 
-static bool ProcessBlockFound(const CBlock* pblock, const CChainParams& chainparams)
+static bool ProcessCVNBlock(const CBlock* pblock, const CChainParams& chainparams)
 {
     LogPrintf("%s\n", pblock->ToString());
-    LogPrintf("generated %s\n", FormatMoney(pblock->vtx[0].vout[0].nValue));
+    LogPrintf("fees collected: %s\n", FormatMoney(pblock->vtx[0].vout[0].nValue));
 
-    // Found a solution
     {
         LOCK(cs_main);
         if (pblock->hashPrevBlock != chainActive.Tip()->GetBlockHash())
@@ -343,15 +322,21 @@ static bool ProcessBlockFound(const CBlock* pblock, const CChainParams& chainpar
     return true;
 }
 
-void static CertifiedValidationNode(const CChainParams& chainparams)
+static uint32_t CheckNextBlockCreator()
 {
-    LogPrintf("Certified validation node started\n");
-    SetThreadPriority(THREAD_PRIORITY_LOWEST);
+    MilliSleep(5000);
+    return 0x77777777;
+}
+
+void static CertifiedValidationNode(const CChainParams& chainparams, const uint32_t& nNodeId)
+{
+    SetThreadPriority(THREAD_PRIORITY_NORMAL);
     RenameThread("certified-validation-node");
+    LogPrintf("Certified validation node started for node ID 0x%08x\n", nNodeId);
 
-    unsigned int nExtraNonce = 0;
+    uint32_t nExtraNonce = 0;
 
-    RunCVNSignerThread(chainparams);
+    RunCVNSignerThread(chainparams, nNodeId);
 
     boost::shared_ptr<CReserveScript> coinbaseScript;
     GetMainSignals().ScriptForMining(coinbaseScript);
@@ -361,7 +346,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
         // due to some internal error but also if the keypool is empty.
         // In the latter case, already the pointer is NULL.
         if (!coinbaseScript || coinbaseScript->reserveScript.empty())
-            throw std::runtime_error("No coinbase script available (mining requires a wallet)");
+            throw std::runtime_error("No coinbase script available (PoC requires a wallet)");
 
         while (true) {
             if (chainparams.MiningRequiresPeers()) {
@@ -379,92 +364,60 @@ void static CertifiedValidationNode(const CChainParams& chainparams)
                 } while (true);
             }
 
+            if (!CheckNextBlockCreator() == nNodeId) {
+                MilliSleep(5000);
+                nExtraNonce++; // create some 'randomness' for the coinbase
+                continue;
+            }
+
             //
-            // Create new block
+            // This node is potentially the next to advance the chain
             //
-            unsigned int nTransactionsUpdatedLast = mempool.GetTransactionsUpdated();
             CBlockIndex* pindexPrev = chainActive.Tip();
 
             auto_ptr<CBlockTemplate> pblocktemplate(CreateNewBlock(chainparams, coinbaseScript->reserveScript));
             if (!pblocktemplate.get())
             {
-                LogPrintf("Error in CertifiedValidationNode: Keypool ran out, please call keypoolrefill before restarting the mining thread\n");
+                LogPrintf("Error in CertifiedValidationNode: Keypool ran out, please call keypoolrefill before restarting the CVN thread\n");
                 return;
             }
             CBlock *pblock = &pblocktemplate->block;
-            IncrementExtraNonce(pblock, pindexPrev, nExtraNonce);
+            UpdateCoinbase(pblock, pindexPrev, nExtraNonce);
 
-            pblock->nCreatorId = nCvnNodeId;
+            pblock->nCreatorId = nNodeId;
+            pblock->nHeight = pindexPrev->nHeight + 1;
 
-            LogPrintf("Running CertifiedValidationNode with %u transactions in block (%u bytes)\n", pblock->vtx.size(),
+            LogPrintf("creating block with %u transactions (%u bytes)\n", pblock->vtx.size(),
                 ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION));
 
-            //
-            // Search
-            //
-            int64_t nStart = GetTime();
-            uint256 hash;
-            int cnt = 0;
-            while (true) {
-                MilliSleep(5000);
-                // Check if something found
-                if (!(++cnt % 2)) //ScanHash(pblock, nNonce, &hash)
-                {
-                    // Found a solution
-                    SetThreadPriority(THREAD_PRIORITY_NORMAL);
-                    LogPrintf("CertifiedValidationNode:\n");
-                    cnt = 0;
+            CBlockSignature signature;
+            if (!SignBlock(pblock->GetUnsignedHash(), signature, nNodeId))
+                break;
 
-                    pblock->nHeight = pindexPrev->nHeight + 1;
+            pblock->vSignatures.push_back(signature);
 
-                    CBlockSignature signature;
-                    if (!SignBlock(pblock->GetUnsignedHash(), signature))
-                        break;
+            ProcessCVNBlock(pblock, chainparams);
+            SetThreadPriority(THREAD_PRIORITY_LOWEST);
+            coinbaseScript->KeepScript();
 
-                    pblock->vSignatures.push_back(signature);
-
-                    ProcessBlockFound(pblock, chainparams);
-                    SetThreadPriority(THREAD_PRIORITY_LOWEST);
-                    coinbaseScript->KeepScript();
-
-                    // In regression test mode, stop mining after a block is found.
-                    if (chainparams.MineBlocksOnDemand())
-                        throw boost::thread_interrupted();
-
-                    break;
-                }
-
-                // Check for stop or if block needs to be rebuilt
-                boost::this_thread::interruption_point();
-                // Regtest mode doesn't require peers
-                if (vNodes.empty() && chainparams.MiningRequiresPeers())
-                    break;
-                if (mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && GetTime() - nStart > 60)
-                    break;
-                if (pindexPrev != chainActive.Tip())
-                    break;
-
-                // Update nTime every few seconds
-                if (UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev) < 0)
-                    break; // Recreate the block if the clock has run backwards,
-                           // so that we can use the correct time.
-            }
+            // In regression test mode, stop after a block is created.
+            if (chainparams.MineBlocksOnDemand())
+                throw boost::thread_interrupted();
         }
     }
     catch (const boost::thread_interrupted&)
     {
-        LogPrintf("Certified validation node terminated\n");
+        LogPrintf("Certified validation node 0x%08x terminated\n", nNodeId);
         throw;
     }
     catch (const std::runtime_error &e)
     {
-        LogPrintf("CertifiedValidationNode runtime error: %s\n", e.what());
-
+        LogPrintf("CertifiedValidationNode 0x%08x runtime error: %s\n", nNodeId, e.what());
         return;
     }
 }
 
-void RunCertifiedValidationNode(bool fGenerate, const CChainParams& chainparams)
+void RunCertifiedValidationNode(bool fGenerate, const CChainParams& chainparams, uint32_t& nNodeId)
 {
     static boost::thread_group* minerThreads = NULL;
 
@@ -478,11 +431,11 @@ void RunCertifiedValidationNode(bool fGenerate, const CChainParams& chainparams)
     if (!fGenerate)
         return;
 
-    if (!nCvnNodeId) {
+    if (!nNodeId) {
         LogPrintf("Not starting CVN thread. CVN not configured.\n");
         return;
     }
 
     minerThreads = new boost::thread_group();
-    minerThreads->create_thread(boost::bind(&CertifiedValidationNode, boost::cref(chainparams)));
+    minerThreads->create_thread(boost::bind(&CertifiedValidationNode, boost::cref(chainparams), boost::cref(nNodeId)));
 }

@@ -23,7 +23,7 @@ extern uint32_t nCvnNodeId;
 extern CCriticalSection cs_mapCVNs;
 extern std::map<uint32_t, CCvnInfo> mapCVNs;
 
-bool SignBlock(const uint256& hashUnsignedBlock, CBlockSignature& signature);
+bool SignBlock(const uint256& hashUnsignedBlock, CBlockSignature& signature, const uint32_t& nNodeId);
 bool CheckBlockSignature(const uint256 &hash, const CBlockSignature &sig);
 bool CheckForDuplicateCvns(const CBlock& block);
 
@@ -37,6 +37,6 @@ void UpdateChainParameters(const CBlock* pblock);
 bool CheckDynamicChainParameters(const CDynamicChainParams& params);
 
 /** strart the CVN voter thread */
-void RunCVNSignerThread(const CChainParams& chainparams);
+void RunCVNSignerThread(const CChainParams& chainparams, const uint32_t& nNodeId);
 
 #endif // BITCOIN_POC_H
