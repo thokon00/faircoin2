@@ -107,7 +107,10 @@ public:
     uint32_t nMinCvnSigners;
     uint32_t nMaxCvnSigners;
     uint32_t nBlockSpacing; // in seconds
-    uint32_t nDustThreshold; // in seconds
+    uint32_t nDustThreshold; // in µFAIR
+    // for a node to create the next block it needs to have cosigned
+    // the last nMinSuccessiveSignatures blocks
+    uint32_t nMinSuccessiveSignatures;
     std::vector<unsigned char> vPubKey;
 
     CDynamicChainParams()
@@ -125,6 +128,7 @@ public:
         READWRITE(nMaxCvnSigners);
         READWRITE(nBlockSpacing);
         READWRITE(nDustThreshold);
+        READWRITE(nMinSuccessiveSignatures);
         READWRITE(vPubKey);
     }
 
@@ -135,6 +139,7 @@ public:
         nMinCvnSigners = 0;
         nBlockSpacing = 0;
         nDustThreshold = 0;
+        nMinSuccessiveSignatures = 0;
         vPubKey.clear();
     }
 

@@ -322,10 +322,57 @@ static bool ProcessCVNBlock(const CBlock* pblock, const CChainParams& chainparam
     return true;
 }
 
+typedef boost::unordered_set<uint32_t> TimeWeightSetType;
+typedef vector<uint32_t>::reverse_iterator CandidateIterator;
+
+static void AddToSigSets(vector<TimeWeightSetType>& vLastSignatures, const vector<CBlockSignature>& vSignatures)
+{
+    BOOST_FOREACH(const CBlockSignature& sig, vSignatures) {
+        LogPrintf("%s\n", sig.ToString());
+    }
+
+}
+
+static bool HasSignedLastBlocks(const uint32_t& nCreatorCandidate, const uint32_t& nMinSuccessiveSignatures)
+{
+    return true;
+}
+
+/**
+ * The rules are as follows:
+ * 1. Find the node with the highest time-weight. That's the
+ *    node that created its last block the furthest in the past.
+ * 2. It must have cosigned the last nCreatorMinSignatures blocks
+ *    to proof it's cooperation.
+ */
 static uint32_t CheckNextBlockCreator()
 {
+    TimeWeightSetType setCheckedNodes;
+    setCheckedNodes.reserve(mapCVNs.size());
+    vector<uint32_t> vCreatorCandidates(mapCVNs.size());
+    vector<TimeWeightSetType> vLastSignatures;
+    uint32_t nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures;
+
+    for (CBlockIndex* pindex = chainActive.Tip(); pindex; pindex = pindex->pprev) {
+        if (setCheckedNodes.insert(pindex->nCreatorId).second)
+            vCreatorCandidates.push_back(pindex->nCreatorId);
+
+        if (nMinSuccessiveSignatures--)
+            AddToSigSets(vLastSignatures, pindex->vSignatures);
+    }
+
+    CandidateIterator itCandidates = vCreatorCandidates.rbegin();
+    nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures; // re-initialize
+    uint32_t nNextCreatorId = 0;
+
+    do {
+        uint32_t nCreatorCandidate = *(itCandidates--);
+
+        if (HasSignedLastBlocks(nCreatorCandidate, nMinSuccessiveSignatures))
+            nNextCreatorId = nCreatorCandidate;
+    } while(!nNextCreatorId && nMinSuccessiveSignatures && itCandidates != vCreatorCandidates.rend());
     MilliSleep(5000);
-    return 0x77777777;
+    return nNextCreatorId;
 }
 
 void static CertifiedValidationNode(const CChainParams& chainparams, const uint32_t& nNodeId)

@@ -13,8 +13,6 @@
 #include <stdio.h>
 #include <set>
 
-typedef std::map<uint32_t, CCvnInfo> CvnMapType;
-
 CCriticalSection cs_mapCVNs;
 uint32_t nCvnNodeId = 0;
 CvnMapType mapCVNs;

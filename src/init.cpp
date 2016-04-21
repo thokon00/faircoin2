@@ -1159,6 +1159,14 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                 nCvnNodeId = 0;
                 return InitError("invalid CVN private key supplied\n");
             }
+
+#if 0
+            CBlock genesis = chainparams.GenesisBlock();
+            UpdateCvnInfo(&genesis);
+            CBlockSignature blockSig;
+            SignBlock(uint256S("c0662d549e57d77f2ba897deea4254014ac0ebe1563a57e7af5501cfc17c2d86"), blockSig, 3221344269);
+            LogPrintf("Genesis signature: %s\n", HexStr(blockSig.vSignature));
+#endif
         }
     }
 

@@ -12,6 +12,8 @@
 
 #include <stdint.h>
 
+typedef std::map<uint32_t, CCvnInfo> CvnMapType;
+
 #define MAX_BLOCK_SPACING 600
 #define MIN_BLOCK_SPACING 30
 #define MAX_DUST_THRESHOLD 1 * COIN
