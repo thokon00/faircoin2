@@ -99,19 +99,19 @@ public:
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 
-        CBlockSignature genesisSignature(0xC001D00D, ParseHex("3045022100816ecd9220bac31c7372bffe0c4f89f22c25b3a2319c926440d59e6cd6207b8c022004333e8409c28fabc37d5783c3a65ead0a7292de4041cd8f090953d8661cc878"));
+        CCvnSignature genesisSignature(0xC001D00D, ParseHex("304402202aa6c9fd6c06542a1b175f33c3c8c4aef155d6180711e3ba30be250eb90ef03602201a459ff70f729630c5dd47ef601efa3847ee24073f8f3d9a4068e74c6da232cd"));
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
         printf("genesis block main net:\n%s\n", genesis.ToString().c_str());
 
 #ifdef SHOW_HASHES
-        printf("%s parameters\nhash: %s\nmerkle: %s\nunsigned hash: %s\n",strNetworkID.c_str(),
+        printf("%s parameters\nhash: %s\nmerkle: %s\n",strNetworkID.c_str(),
                 consensus.hashGenesisBlock.ToString().c_str(),
-                genesis.hashMerkleRoot.ToString().c_str(),
-                genesis.GetUnsignedHash().ToString().c_str());
+                genesis.hashMerkleRoot.ToString().c_str());
 #else
-        assert(consensus.hashGenesisBlock == uint256S("4a8e424b6405a934cb26eefed3d3317430918403ec43fe9e56349a93c8afa567"));
+        // also update checkpoints!
+        assert(consensus.hashGenesisBlock == uint256S("864cbe42f27831509a33654308ec0173b2212a101675809e429fec7a76dd7f3b"));
         assert(genesis.hashMerkleRoot == uint256S("109163d7eca9f3deb276e60e5670ac714f0841d2c74c3ff25f3a551a7b4d2422"));
 #endif
         vSeeds.push_back(CDNSSeedData("1.fair-coin.org", "faircoin2-seed1.fair-coin.org")); // Thomas König
@@ -133,8 +133,8 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            ( 0, uint256S("533750216f308c0744579a1fda884d0a56da828da6552b0b67fbbd7431ac3792")),
-            1458643274, // * UNIX timestamp of last checkpoint block
+            ( 0, uint256S("864cbe42f27831509a33654308ec0173b2212a101675809e429fec7a76dd7f3b")),
+            1461248303, // * UNIX timestamp of last checkpoint block
             0,   // * total number of transactions between genesis and last checkpoint
                         //   (the tx=... number in the SetBestChain debug.log lines)
             0.0     // * estimated number of transactions per day after checkpoint
@@ -177,15 +177,14 @@ public:
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 
-        CBlockSignature genesisSignature(0xC001CAFE);
+        CCvnSignature genesisSignature(0xC001CAFE);
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
 #ifdef SHOW_HASHES
-        printf("%s parameters\nhash: %s\nmerkle: %s\nunsigned hash: %s\n",strNetworkID.c_str(),
+        printf("%s parameters\nhash: %s\nmerkle: %s\n",strNetworkID.c_str(),
                 consensus.hashGenesisBlock.ToString().c_str(),
-                genesis.hashMerkleRoot.ToString().c_str(),
-                genesis.GetUnsignedHash().ToString().c_str());
+                genesis.hashMerkleRoot.ToString().c_str());
 #else
         assert(consensus.hashGenesisBlock == uint256S("abdc463cf781e266c91ea25a43fbce67261654102767ae3bb305442ae28866b0"));
         assert(genesis.hashMerkleRoot == uint256S("9f470d4e6fb2b61a55589cdb16edf747d467465a26eb6e242ebb5a5b28d92d34"));
@@ -255,15 +254,14 @@ public:
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 
-        CBlockSignature genesisSignature(0xCAFEBABE);
+        CCvnSignature genesisSignature(0xCAFEBABE);
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
 #ifdef SHOW_HASHES
-        printf("%s parameters\nhash: %s\nmerkle: %s\nunsigned hash: %s\n",strNetworkID.c_str(),
+        printf("%s parameters\nhash: %s\nmerkle: %s\n",strNetworkID.c_str(),
                 consensus.hashGenesisBlock.ToString().c_str(),
-                genesis.hashMerkleRoot.ToString().c_str(),
-                genesis.GetUnsignedHash().ToString().c_str());
+                genesis.hashMerkleRoot.ToString().c_str());
 #else
         assert(consensus.hashGenesisBlock == uint256S("c80274f7aad1ca3266f267e207e57ca24df83545e9184d877886f815df70262a"));
         assert(genesis.hashMerkleRoot == uint256S("96f0414d09a85fe992b38e33389bca2d2a795279a69f3323eacf12cdaa218e23"));

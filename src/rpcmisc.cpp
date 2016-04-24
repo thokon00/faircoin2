@@ -438,7 +438,7 @@ static void SignCvnBlock(CBlock &block, const UniValue& sigs)
             strprintf("too many signatures supplied %u (%u max)\nReduce the number", sigs.size(), (size_t)dynParams.nMaxCvnSigners));
 
     block.vSignatures.resize(sigs.size());
-    uint256 hashUnsignedBlock = block.GetUnsignedHash();
+    uint256 hashBlock = block.GetHash();
 
     for (uint32_t i = 0 ; i < sigs.size() ; i++)
     {
@@ -454,36 +454,83 @@ static void SignCvnBlock(CBlock &block, const UniValue& sigs)
         ss << std::hex << vTokens[0].c_str();
         ss >> signerId;
 
-        block.vSignatures[i] = CBlockSignature(signerId, ParseHex(vTokens[1]));
+        block.vSignatures[i] = CCvnSignature(signerId, ParseHex(vTokens[1]));
 
-        if (!CheckBlockSignature(hashUnsignedBlock, block.vSignatures[i]))
+        if (!CvnVerifySignature(hashBlock, block.vSignatures[i]))
             LogPrintf("signature %u : %s is invalid\n", i + 1, HexStr(block.vSignatures[i].vSignature));
+    }
+}
+
+static void AddCvnInfoToBlock(CBlock& block, uint32_t nNodeId, std::vector<unsigned char> vPubKey)
+{
+    block.nVersion |= CBlock::CVN_BLOCK;
+    block.vCvns.resize(mapCVNs.size() + 1);
+
+    uint32_t index = 0;
+    typedef std::map<uint32_t, CCvnInfo> CvnMapType;
+    BOOST_FOREACH(const CvnMapType::value_type& cvn, mapCVNs)
+    {
+        block.vCvns[index++] = cvn.second;
+    };
+
+    CCvnInfo cvn(nNodeId, vPubKey);
+    block.vCvns[index++] = cvn;
+
+}
+
+static void AddDynParamsToBlock(CBlock& block, UniValue jsonParams)
+{
+    block.nVersion |= CBlock::CHAIN_PARAMETER_BLOCK;
+
+    CDynamicChainParams &params = block.dynamicChainParams;
+
+    params.nBlockSpacing            = dynParams.nBlockSpacing;
+    params.nDustThreshold           = dynParams.nDustThreshold;
+    params.nMaxCvnSigners           = dynParams.nMaxCvnSigners;
+    params.nMinCvnSigners           = dynParams.nMinCvnSigners;
+    params.nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures;
+
+    vector<string> paramsList = jsonParams.getKeys();
+    BOOST_FOREACH(const string& key, paramsList) {
+        if (key == "nBlockSpacing") {
+            params.nBlockSpacing = jsonParams[key].get_int();
+        } else if (key == "nDustThreshold") {
+            params.nDustThreshold = jsonParams[key].get_int();
+        } else if (key == "nMaxCvnSigners") {
+            params.nMaxCvnSigners = jsonParams[key].get_int();
+        } else if (key == "nMinCvnSigners") {
+            params.nMinCvnSigners = jsonParams[key].get_int();
+        } else if (key == "nMinSuccessiveSignatures") {
+            params.nMinSuccessiveSignatures = jsonParams[key].get_int();
+        }
     }
 }
 
 UniValue addcvn(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 4)
+    if (fHelp || params.size() < 4 || params.size() > 5)
         throw runtime_error(
-            "addcvn \"nodeId\" \"timestamp\" \"pubkey\" [\"n:sigs\",...]\n"
+            "addcvn \"nodeId\" \"timestamp\" \"pubkey\" [\"n:sigs\",...] {\"nParam1\":123,\"nParam2\":456}\n"
             "\nAdd a new CVN to the FairCoin network\n"
             "\nArguments:\n"
-            "1. \"nodeId\"       (string, required) The node ID (in hex) of the new CVN.\n"
-            "2. \"timestamp\"    (int, required) The time of block creation.\n"
-            "3. \"pubkey\"       (string, required) The public key of the CVN (in hex).\n"
-            "4. \"n:sigs\"       (string, required) The admin signatures prefix by the signer ID (n)\n"
+            "1. \"nodeId\"             (string, required) The node ID (in hex) of the new CVN.\n"
+            "2. \"timestamp\"          (int, required) The time of block creation.\n"
+            "3. \"pubkey\"             (string, required but can be empty) The public key of the CVN (in hex).\n"
+            "4. \"[n:sigs]\"           (string, required) The admin signatures prefix by the signer ID (n)\n"
+            "5. \"{\"key\":\"val\"}]\" (string, optional) The admin signatures prefix by the signer ID (n)\n"
             "\nResult:\n"
             "{\n"
-                "  \"nodeId\":\"node ID in decimal\",  (int) The node ID of the new CVN in decimal form\n"
-                "  \"nodeIdHex\":\"node ID in hex\",   (int) The node ID of the new CVN in hexadecimal form\n"
-                "  \"timestamp\":\"node ID (dec) node ID\",  (int64) The node ID  of the new CVN in decimal and in hex separated by a space\n"
+                "  \"nodeId\":\"node ID in decimal\",           (int) The node ID of the new CVN in decimal form\n"
+                "  \"nodeIdHex\":\"node ID in hex\",            (int) The node ID of the new CVN in hexadecimal form\n"
+                "  \"timestamp\":\"node ID (dec) node ID\",     (int64) The node ID  of the new CVN in decimal and in hex separated by a space\n"
                 "  \"address\":\"faircoin address\",            (string) The FairCoin address of the new CVN.\n"
                 "  \"pubKey\":\"public key\",                   (string) The public key of the new CVN (in hex).\n"
                 "  \"signatures\":\"number of signatures\"      (string) The number of admin signatures that signed the CvnInfo.\n"
+                "  \"chainParams\":\"serialized params\"        (string) The serialized representation of CDynamicChainParams.\n"
              "}\n"
             "\nExamples:\n"
             "\nAdd a new CVN\n"
-            + HelpExampleCli("addcvn", "0x123488 1461056246 \"04...00\" [\"0x87654321:a1b5..9093\",\"0xdeadcafe:0432..12aa\"]")
+            + HelpExampleCli("addcvn", "0x123488 1461056246 \"04...00\" [\\\"0x87654321:a1b5..9093\\\",\\\"0xdeadcafe:0432..12aa\\\"] \"{\\\"nParapm1\\\":\\\"123\\\",\\\"nParapm2\\\":\\\"456\\\"}")
         );
 
     LOCK(cs_main);
@@ -498,7 +545,7 @@ UniValue addcvn(const UniValue& params, bool fHelp)
     std::vector<unsigned char> vPubKey = ParseHex(params[2].get_str());
     CPubKey pubKey(vPubKey);
 
-    if (!pubKey.IsFullyValid())
+    if (!pubKey.IsFullyValid() && params[4].isNull())
         throw runtime_error(" Invalid public key: " + params[2].get_str());
 
     const UniValue& sigs = params[3].get_array();
@@ -506,41 +553,40 @@ UniValue addcvn(const UniValue& params, bool fHelp)
     CBlockIndex* pindexPrev = chainActive.Tip();
 
     CBlock block;
-    block.nVersion      |= CBlock::CVN_BLOCK;
     block.nTime          = nTime;
     block.hashPrevBlock  = pindexPrev->GetBlockHash();
     block.nHeight        = pindexPrev->nHeight + 1;
     block.nCreatorId     = nCvnNodeId;
 
-    block.vCvns.resize(mapCVNs.size() + 1);
+    if (pubKey.IsFullyValid())
+        AddCvnInfoToBlock(block, nNodeId, vPubKey);
 
-    uint32_t index = 0;
-    typedef std::map<uint32_t, CCvnInfo> CvnMapType;
-    BOOST_FOREACH(const CvnMapType::value_type& cvn, mapCVNs)
-    {
-        block.vCvns[index++] = cvn.second;
-    };
-
-    CCvnInfo cvn(nNodeId, vPubKey);
-    block.vCvns[index++] = cvn;
+    if (!params[4].isNull())
+        AddDynParamsToBlock(block, params[4].get_obj());
 
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
     SignCvnBlock(block, sigs);
 
-    CKeyID keyID = pubKey.GetID();
-    CBitcoinAddress address;
-    address.Set(keyID);
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("nodeId", strprintf("0x%08x", nNodeId)));
 
-    LogPrintf("about to added CVN 0x%08x with pubKey %s (%s) to the network\n", nNodeId, HexStr(vPubKey), address.ToString());
+    if (block.HasCvnInfo()) {
+        CKeyID keyID = pubKey.GetID();
+        CBitcoinAddress address;
+        address.Set(keyID);
+
+        LogPrintf("about to add CVN 0x%08x with pubKey %s (%s) to the network\n", nNodeId, HexStr(vPubKey), address.ToString());
+        result.push_back(Pair("pubKey", HexStr(vPubKey)));
+        result.push_back(Pair("address", address.ToString()));
+    }
+
+    if (block.HasChainParameters())
+        LogPrintf("about to update dynamic chain parameters on the network\n   %s\n", block.dynamicChainParams.ToString());
 
     if (!ProcessNewCvnBlock(&block, Params()))
         throw runtime_error(" CvnBlock not accepted");
 
-    UniValue result(UniValue::VOBJ);
-    result.push_back(Pair("nodeId", strprintf("0x%08x", nNodeId)));
-    result.push_back(Pair("address", address.ToString()));
-    result.push_back(Pair("pubKey", HexStr(vPubKey)));
 
     return result;
 }
@@ -626,8 +672,8 @@ UniValue signunsignedblock(const UniValue& params, bool fHelp)
 
     uint256 hashUnsignedBlock = uint256S(params[0].get_str());
 
-    CBlockSignature signature;
-    SignBlock(hashUnsignedBlock, signature, nCvnNodeId);
+    CCvnSignature signature;
+    CvnSign(hashUnsignedBlock, signature, nCvnNodeId);
 
     return HexStr(signature.vSignature);
 }

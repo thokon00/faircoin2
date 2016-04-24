@@ -6,7 +6,6 @@
 #include <stdio.h>
 
 #include "primitives/block.h"
-extern std::map<uint32_t, CCvnInfo> mapCVNs;
 
 #include "hash.h"
 #include "util.h"
@@ -16,11 +15,6 @@ extern std::map<uint32_t, CCvnInfo> mapCVNs;
 #include "pubkey.h"
 #include "consensus/params.h"
 
-
-uint256 CUnsignedBlockHeader::GetUnsignedHash() const
-{
-    return SerializeHash(*this);
-}
 
 uint256 CBlockHeader::GetHash() const
 {
@@ -42,10 +36,28 @@ uint256 CDynamicChainParams::GetHash() const
     return SerializeHash(*this);
 }
 
-std::string CBlockSignature::ToString() const
+std::string CDynamicChainParams::ToString() const
+{
+	std::stringstream s;
+	    s << strprintf("CDynamicChainParams(ver=%d, minCvnSigners=%u, maxCvnSigners=%u, blockSpacing=%u, dustThreshold=%u, minSuccessiveSignatures=%u)",
+	        nVersion,
+			nMinCvnSigners, nMaxCvnSigners,
+			nBlockSpacing,
+			nDustThreshold,
+			nMinSuccessiveSignatures
+		);
+	return s.str();
+}
+
+uint256 CCvnSignatureMsg::GetHash() const
+{
+    return SerializeHash(*this);
+}
+
+std::string CCvnSignature::ToString() const
 {
     std::stringstream s;
-    s << strprintf("CBlockSignature(signerId=%u, ver=%d, sig=%s)",
+    s << strprintf("CCvnSignature(signerId=%u, ver=%d, sig=%s)",
         nSignerId,
         nVersion,
         HexStr(vSignature)); //TODO: limit again .substr(0, 30));
@@ -72,11 +84,10 @@ std::string CBlock::ToString() const
     if (HasChainParameters())
         payload << strprintf("%sparams", (payload.tellp() > 0) ? "," : "");
 
-    s << strprintf("CBlock(%u)(hash=%s, ver=%d, payload=%s, hashPrevBlock=%s, unsignedHash=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=%u, signatures=%u, vtx=%u)\n",
+    s << strprintf("CBlock(%u)(hash=%s, ver=%d, payload=%s, hashPrevBlock=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=%u, signatures=%u, vtx=%u)\n",
         nHeight, GetHash().ToString(),
         nVersion & 0xff, payload.str(),
         hashPrevBlock.ToString(),
-        GetUnsignedHash().ToString(),
         hashMerkleRoot.ToString(),
         nTime, nCreatorId, vSignatures.size(),
         vtx.size());
@@ -93,7 +104,7 @@ std::string CBlock::ToString() const
     }
     if (HasChainParameters())
     {
-        s << strprintf("TBI(%u): print out dynamic chain parameter information\n", nVersion);
+        s << dynamicChainParams.ToString() << "\n";
     }
     if (HasTx())
     {

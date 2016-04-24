@@ -219,13 +219,10 @@ extern const char *REJECT;
  */
 extern const char *SENDHEADERS;
 /**
- * Adds a certified validation node to the FairCoin network
+ * The CVN signature message transmits a single serialized CVN signature,
+ * hashPrev and nCreatorId.
  */
-extern const char *ADDCVN;
-/**
- * Removes a certified validation node from the FairCoin network
- */
-extern const char *REMOVECVN;
+extern const char *CVNSIG;
 
 };
 
@@ -324,6 +321,7 @@ enum {
     // Nodes may always request a MSG_FILTERED_BLOCK in a getdata, however,
     // MSG_FILTERED_BLOCK should not appear in any invs except as a part of getdata.
     MSG_FILTERED_BLOCK,
+    MSG_CVN_SIGNATURE,
 };
 
 #endif // BITCOIN_PROTOCOL_H

@@ -12,10 +12,9 @@
 #include "consensus/params.h"
 
 /** CVNs send this signature to the creator of the next block
- * to proof consensus about the block. The GetUnsignedHash() hash
- * of the next block is signed.
+ * to proof consensus about the block.
  */
-class CBlockSignature
+class CCvnSignature
 {
 public:
     static const int32_t CURRENT_VERSION=1;
@@ -23,19 +22,19 @@ public:
     uint32_t nSignerId;
     std::vector<unsigned char> vSignature;
 
-    CBlockSignature()
+    CCvnSignature()
     {
         SetNull();
     }
 
-    CBlockSignature(const uint32_t nSignerNodeId, const int32_t nVersion = CBlockSignature::CURRENT_VERSION)
+    CCvnSignature(const uint32_t nSignerNodeId, const int32_t nVersion = CCvnSignature::CURRENT_VERSION)
     {
         this->nVersion = nVersion;
         this->nSignerId = nSignerNodeId;
         this->vSignature.clear();
     }
 
-    CBlockSignature(const uint32_t nSignerNodeId, std::vector<unsigned char> vSignature, const int32_t nVersion = CBlockSignature::CURRENT_VERSION)
+    CCvnSignature(const uint32_t nSignerNodeId, std::vector<unsigned char> vSignature, const int32_t nVersion = CCvnSignature::CURRENT_VERSION)
     {
         this->nVersion = nVersion;
         this->nSignerId = nSignerNodeId;
@@ -54,12 +53,51 @@ public:
 
     void SetNull()
     {
-        nVersion = CBlockSignature::CURRENT_VERSION;
+        nVersion = CCvnSignature::CURRENT_VERSION;
         nSignerId = 0;
         vSignature.clear();
     }
 
     std::string ToString() const;
+};
+
+class CCvnSignatureMsg : public CCvnSignature
+{
+public:
+    uint256 hashPrev;
+    uint32_t nCreatorId; // the cvn node ID of the creator of the next block
+
+    CCvnSignatureMsg()
+    {
+        SetNull();
+    }
+
+    void SetNull()
+    {
+        CCvnSignature::SetNull();
+        hashPrev.SetNull();
+        nCreatorId = 0;
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(*(CCvnSignature*)this);
+        READWRITE(hashPrev);
+        READWRITE(nCreatorId);
+    }
+
+    CCvnSignature GetCvnSignature() const
+    {
+        CCvnSignature msg;
+        msg.nVersion   = nVersion;
+        msg.nSignerId  = nSignerId;
+        msg.vSignature = vSignature;
+        return msg;
+    }
+
+    uint256 GetHash() const;
 };
 
 class CCvnInfo
@@ -144,6 +182,8 @@ public:
     }
 
     uint256 GetHash() const;
+
+    std::string ToString() const;
 };
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
@@ -153,7 +193,7 @@ public:
  * in the block is a special one that creates a new coin owned by the creator
  * of the block.
  */
-class CUnsignedBlockHeader
+class CBlockHeader
 {
 public:
     // header
@@ -168,8 +208,9 @@ public:
     uint32_t nTime;
     uint32_t nCreatorId;
     int nHeight;
+    std::vector<CCvnSignature> vSignatures;
 
-    CUnsignedBlockHeader()
+    CBlockHeader()
     {
         SetNull();
     }
@@ -185,16 +226,18 @@ public:
         READWRITE(nTime);
         READWRITE(nCreatorId);
         READWRITE(nHeight);
+        READWRITE(vSignatures);
     }
 
     void SetNull()
     {
-        nVersion = CUnsignedBlockHeader::CURRENT_VERSION;
+        nVersion = CBlockHeader::CURRENT_VERSION;
         hashPrevBlock.SetNull();
         hashMerkleRoot.SetNull();
         nTime = 0;
         nCreatorId = 0;
         nHeight = 0;
+        vSignatures.clear();
     }
 
     bool IsNull() const
@@ -202,7 +245,7 @@ public:
         return (nCreatorId == 0);
     }
 
-    uint256 GetUnsignedHash() const;
+    uint256 GetHash() const;
 
     int64_t GetBlockTime() const
     {
@@ -223,34 +266,6 @@ public:
     {
         return (nVersion & TX_BLOCK);
     }
-};
-
-class CBlockHeader : public CUnsignedBlockHeader
-{
-public:
-    // header
-    std::vector<CBlockSignature> vSignatures;
-
-    CBlockHeader()
-    {
-        SetNull();
-    }
-
-    void SetNull()
-    {
-        CUnsignedBlockHeader::SetNull();
-        vSignatures.clear();
-    }
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(*(CUnsignedBlockHeader*)this);
-        READWRITE(vSignatures);
-    }
-
-    uint256 GetHash() const;
 };
 
 class CBlock : public CBlockHeader

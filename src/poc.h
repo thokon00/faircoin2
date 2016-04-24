@@ -13,8 +13,10 @@
 #include <stdint.h>
 
 typedef std::map<uint32_t, CCvnInfo> CvnMapType;
+typedef std::map<uint32_t, CCvnSignature> CvnSigEntryType;
+typedef std::map<uint256, CvnSigEntryType> CvnSigMapType;
 
-#define MAX_BLOCK_SPACING 600
+#define MAX_BLOCK_SPACING 3600
 #define MIN_BLOCK_SPACING 30
 #define MAX_DUST_THRESHOLD 1 * COIN
 #define MIN_DUST_THRESHOLD 1000
@@ -23,11 +25,17 @@ typedef std::map<uint32_t, CCvnInfo> CvnMapType;
 
 extern uint32_t nCvnNodeId;
 extern CCriticalSection cs_mapCVNs;
-extern std::map<uint32_t, CCvnInfo> mapCVNs;
+extern CvnMapType mapCVNs;
+extern CCriticalSection cs_mapCvnSigs;
+extern CvnSigMapType mapCvnSigs;
+extern bool fSmartCardUnlocked;
 
-bool SignBlock(const uint256& hashUnsignedBlock, CBlockSignature& signature, const uint32_t& nNodeId);
-bool CheckBlockSignature(const uint256 &hash, const CBlockSignature &sig);
+bool CvnSign(const uint256& hashUnsignedBlock, CCvnSignature& signature, const uint32_t& nNodeId);
+bool CvnVerifySignature(const uint256 &hash, const CCvnSignature &sig);
 bool CheckForDuplicateCvns(const CBlock& block);
+void SendCVNSignature(const uint256& hashPrevBlock);
+bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBlock);
+bool CvnValidateSignature(const CBlockHeader& block, const CCvnSignature& signature);
 
 /** Check whether a block hash satisfies the proof-of-cooperation requirements */
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&);

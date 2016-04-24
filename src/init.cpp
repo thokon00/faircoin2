@@ -1163,8 +1163,11 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 #if 0
             CBlock genesis = chainparams.GenesisBlock();
             UpdateCvnInfo(&genesis);
-            CBlockSignature blockSig;
-            SignBlock(uint256S("c0662d549e57d77f2ba897deea4254014ac0ebe1563a57e7af5501cfc17c2d86"), blockSig, 3221344269);
+            CHashWriter hasher(SER_GETHASH, 0);
+            hasher << genesis.hashPrevBlock << 0xc001d00d << 0xc001d00d;
+
+            CCvnSignature blockSig;
+            CvnSign(hasher.GetHash(), blockSig, 0xc001d00d);
             LogPrintf("Genesis signature: %s\n", HexStr(blockSig.vSignature));
 #endif
         }
