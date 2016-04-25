@@ -23,6 +23,8 @@ CvnMapType mapCVNs;
 CCriticalSection cs_mapCvnSigs;
 CvnSigMapType mapCvnSigs;
 
+bool fSmartCardUnlocked = false;
+
 #ifdef USE_OPENSC
 #include "pkcs11/pkcs11.h"
 #include <secp256k1.h>
@@ -43,8 +45,6 @@ static std::string defaultPkcs11ModulePath = "";
 #else
 static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so";
 #endif
-
-bool fSmartCardUnlocked = false;
 
 static void cleanup_p11()
 {
@@ -296,30 +296,28 @@ void RelayCvnSignature(const CCvnSignatureMsg& signature)
     }
 }
 
-bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBlock)
+bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId)
 {
-    if (!CvnValidateSignature(chainActive.Tip()->GetBlockHeader(), signature)) {
+    if (!CvnValidateSignature(signature, hashPrevBlock, nCreatorId)) {
         LogPrintf("AddCvnSignature : invalid signature received %u\n", signature.nSignerId);
         return false;
     }
 
     LOCK(cs_mapCvnSigs);
     CvnSigEntryType& mapCvnForhashPrev = mapCvnSigs[hashPrevBlock];
-    if (mapCvnForhashPrev.count(signature.nSignerId)) {
-        LogPrintf("AddCvnSignature : ERROR, duplicate signature detected for signer ID %u\n", signature.nSignerId);
-        return false;
-    }
+    if (mapCvnForhashPrev.count(signature.nSignerId)) // already have this, no error
+        return true;
 
-    LogPrintf("AddCvnSignature : add sig %u, hash %s\n", signature.nSignerId, hashPrevBlock.ToString());
+    LogPrintf("AddCvnSignature : add sig for %u by %u, hash %s\n", nCreatorId, signature.nSignerId, hashPrevBlock.ToString());
     mapCvnForhashPrev[signature.nSignerId] = signature;
 
     return true;
 }
 
-bool CvnValidateSignature(const CBlockHeader& block, const CCvnSignature& signature)
+bool CvnValidateSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId)
 {
     CHashWriter hasher(SER_GETHASH, 0);
-    hasher << block.hashPrevBlock << block.nCreatorId << signature.nSignerId;
+    hasher << hashPrevBlock << nCreatorId << signature.nSignerId;
 
     return CvnVerifySignature(hasher.GetHash(), signature);
 }
@@ -329,7 +327,7 @@ void SendCVNSignature(const uint256& hashPrevBlock)
     if (IsInitialBlockDownload())
         return;
 
-    uint32_t nNextCreator = CheckNextBlockCreator();
+    uint32_t nNextCreator = CheckNextBlockCreator(chainActive.Tip());
     if (!nNextCreator) {
         LogPrintf("SendCVNSignature : could not find next block creator\n");
         return;
@@ -354,7 +352,7 @@ void SendCVNSignature(const uint256& hashPrevBlock)
     msg.hashPrev   = hashPrevBlock;
     msg.nCreatorId = nNextCreator;
 
-    if (AddCvnSignature(signature, msg.hashPrev))
+    if (AddCvnSignature(signature, msg.hashPrev, nNextCreator))
         RelayCvnSignature(msg);
 }
 
@@ -416,24 +414,37 @@ void UpdateChainParameters(const CBlock* pblock)
 
     CheckDynamicChainParameters(pblock->dynamicChainParams);
 
-    dynParams.nBlockSpacing             = pblock->dynamicChainParams.nBlockSpacing;
+    dynParams.nBlockSpacing              = pblock->dynamicChainParams.nBlockSpacing;
     dynParams.nDustThreshold             = pblock->dynamicChainParams.nDustThreshold;
     dynParams.nMaxCvnSigners             = pblock->dynamicChainParams.nMaxCvnSigners;
     dynParams.nMinCvnSigners             = pblock->dynamicChainParams.nMinCvnSigners;
-    dynParams.nMinSuccessiveSignatures     = pblock->dynamicChainParams.nMinSuccessiveSignatures;
+    dynParams.nMinSuccessiveSignatures   = pblock->dynamicChainParams.nMinSuccessiveSignatures;
 }
 
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params& params)
 {
-    LogPrint("cvn", "CheckProofOfCooperation : checking %u signatures of block %d %s\n", block.vSignatures.size(), block.nHeight, block.GetHash().ToString());
+    uint256 hashBlock = block.GetHash();
 
     if (!block.vSignatures.size())
-        return error("block %s has no signatures", block.GetHash().ToString());
+        return error("block %s has no signatures", hashBlock.ToString());
 
     BOOST_FOREACH(CCvnSignature signature, block.vSignatures) {
-        if (!CvnValidateSignature(block, signature))
+        if (!CvnValidateSignature(signature, block.hashPrevBlock, block.nCreatorId))
             return error("signature is invalid: %s", signature.ToString());
     }
+
+    uint32_t nBlockCreator = (hashBlock == params.hashGenesisBlock) ?
+            block.nCreatorId :
+            CheckNextBlockCreator(mapBlockIndex[block.hashPrevBlock]);
+
+    if (!nBlockCreator)
+        return error("FATAL: can not determine block creator for %s", hashBlock.ToString());
+
+    if (nBlockCreator != block.nCreatorId)
+        return error("block %s can not be created by %u but by %u", hashBlock.ToString(), block.nCreatorId);
+
+    LogPrint("cvn", "CheckProofOfCooperation : checked %u signatures of block %d %s by 0x%08x\n",
+            block.vSignatures.size(), block.nHeight, hashBlock.ToString(), block.nCreatorId);
 
     return true;
 }

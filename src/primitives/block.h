@@ -105,6 +105,7 @@ class CCvnInfo
 public:
 
     uint32_t nNodeId;
+    uint32_t nHeightAdded;
     std::vector<unsigned char> vPubKey;
 
     CCvnInfo()
@@ -112,6 +113,12 @@ public:
         SetNull();
     }
 
+    CCvnInfo(const uint32_t nNodeId, const uint32_t nHeightAdded, const std::vector<unsigned char> vPubKey)
+    {
+        this->nNodeId = nNodeId;
+        this->nHeightAdded = nHeightAdded;
+        this->vPubKey = vPubKey;
+    }
     CCvnInfo(const uint32_t nNodeId, const std::vector<unsigned char> vPubKey)
     {
         this->nNodeId = nNodeId;
@@ -123,12 +130,14 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
         READWRITE(nNodeId);
+        READWRITE(nHeightAdded);
         READWRITE(vPubKey);
     }
 
     void SetNull()
     {
         nNodeId = 0;
+        nHeightAdded = 0;
         vPubKey.clear();
     }
 

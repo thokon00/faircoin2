@@ -372,7 +372,7 @@ static const string CreateSignerIdList(const std::vector<CCvnSignature>& vSignat
  * 2. It must have cosigned the last nCreatorMinSignatures blocks
  *    to proof it's cooperation.
  */
-uint32_t CheckNextBlockCreator()
+uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart)
 {
     TimeWeightSetType setCheckedNodes;
     setCheckedNodes.reserve(mapCVNs.size());
@@ -381,7 +381,7 @@ uint32_t CheckNextBlockCreator()
     uint32_t nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures;
 
     // first create a list of creator candidates
-    for (CBlockIndex* pindex = chainActive.Tip(); pindex; pindex = pindex->pprev) {
+    for (const CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev) {
         if (!(pindex->nVersion & CBlock::TX_BLOCK)) // we only consider blocks with transactions
             continue;
 
@@ -427,9 +427,9 @@ uint32_t CheckNextBlockCreator()
     } while(nMinSuccessiveSignatures);
 
     if (nNextCreatorId)
-        LogPrintf("NODE ID 0x%08x should create the next block #%u\n", nNextCreatorId, chainActive.Tip()->nHeight + 1);
+        LogPrintf("NODE ID 0x%08x should create the next block #%u\n", nNextCreatorId, pindexStart->nHeight + 1);
     else
-        LogPrintf("ERROR, could not find any Node ID that should create the next block #%u\n", chainActive.Tip()->nHeight + 1);
+        LogPrintf("ERROR, could not find any Node ID that should create the next block #%u\n", pindexStart->nHeight + 1);
 
     return nNextCreatorId;
 }
@@ -447,11 +447,11 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
 
         CCvnSignature signature;
         if (!CvnSign(hasher.GetHash(), signature, nCvnNodeId)) {
-            LogPrintf("SendCVNSignature : could not sign block\n");
+            LogPrintf("SendCVNSignature : %u could not sign block\n", nCvnNodeId);
             return;
         }
 
-        AddCvnSignature(signature, chainparams.GetConsensus().hashGenesisBlock);
+        AddCvnSignature(signature, chainparams.GetConsensus().hashGenesisBlock, 0xc001d00d);
     }
 
     while (!fSmartCardUnlocked || (IsInitialBlockDownload() && !fBoostrap))
@@ -493,13 +493,27 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                 MilliSleep(500);
             }
 
-            CvnSigEntryType sigsForHashPrev = mapCvnSigs[chainActive.Tip()->GetBlockHash()];
-            if (!sigsForHashPrev.count(nCvnNodeId)) {
-                LogPrintf("could not find current signature, resending...\n");
-                SendCVNSignature(chainActive.Tip()->GetBlockHash());
+            {
+                LOCK(cs_mapCvnSigs);
+                uint256 hashTip = chainActive.Tip()->GetBlockHash();
+                CvnSigEntryType& sigsForHashPrev = mapCvnSigs[hashTip];
+#if 0
+                LogPrintf("list of tips in sig map\n");
+                BOOST_FOREACH(CvnSigMapType::value_type& map4hash, mapCvnSigs) {
+                    LogPrintf("  %s\n", map4hash.first.ToString());
+                    LogPrintf("  list of sig in tip map\n");
+                    BOOST_FOREACH(CvnSigEntryType::value_type& cvn, map4hash.second) {
+                        LogPrintf("    %u : %s\n", cvn.first, cvn.second.ToString());
+                    }
+                }
+#endif
+                if (!sigsForHashPrev.count(nCvnNodeId)) {
+                    LogPrintf("could not find signature for tip: %s, resending...\n", hashTip.ToString());
+                    SendCVNSignature(chainActive.Tip()->GetBlockHash());
+                }
             }
 
-            if (CheckNextBlockCreator() != nNodeId) {
+            if (CheckNextBlockCreator(chainActive.Tip()) != nNodeId) {
                 nExtraNonce++; // create some 'randomness' for the coinbase
                 continue;
             }
@@ -532,7 +546,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                 LogPrintf("# of sig available: %u (total: %u)\n  hash: %s\n", sigsForHashPrev.size(), mapCvnSigs.size(), hashBlock.ToString());
                 BOOST_FOREACH(CvnSigEntryType::value_type& cvn, sigsForHashPrev)
                 {
-                    if (!CvnValidateSignature(*pblock, cvn.second))
+                    if (!CvnValidateSignature(cvn.second, pblock->hashPrevBlock, nNodeId))
                         LogPrintf("ERROR: could not add signature to block: %s\n", cvn.second.ToString());
                     else
                         pblock->vSignatures.push_back(cvn.second);

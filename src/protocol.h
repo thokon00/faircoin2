@@ -222,7 +222,17 @@ extern const char *SENDHEADERS;
  * The CVN signature message transmits a single serialized CVN signature,
  * hashPrev and nCreatorId.
  */
-extern const char *CVNSIG;
+extern const char *SIG;
+
+/**
+ * The getsiglist requests the complete cvn signature list for the given Tip()
+ */
+extern const char *GETSIGLIST;
+
+/**
+ * The siglist sends the complete cvn signature list for the given Tip()
+ */
+extern const char *SIGLIST;
 
 };
 

@@ -473,7 +473,7 @@ static void AddCvnInfoToBlock(CBlock& block, uint32_t nNodeId, std::vector<unsig
         block.vCvns[index++] = cvn.second;
     };
 
-    CCvnInfo cvn(nNodeId, vPubKey);
+    CCvnInfo cvn(nNodeId, block.nHeight, vPubKey);
     block.vCvns[index++] = cvn;
 
 }
@@ -633,13 +633,20 @@ UniValue removecvn(const UniValue& params, bool fHelp)
 
     block.vCvns.resize(mapCVNs.size() - 1);
 
-    uint32_t index = 0;
-    typedef std::map<uint32_t, CCvnInfo> CvnMapType;
-    BOOST_FOREACH(const CvnMapType::value_type& cvn, mapCVNs)
     {
-        if (cvn.first != nNodeId)
-            block.vCvns[index++] = cvn.second;
-    };
+        LOCK(cs_mapCVNs);
+
+        if (!mapCVNs.count(nNodeId))
+            throw runtime_error("CVN ID not found");
+
+        uint32_t index = 0;
+        typedef std::map<uint32_t, CCvnInfo> CvnMapType;
+        BOOST_FOREACH(const CvnMapType::value_type& cvn, mapCVNs)
+        {
+            if (cvn.first != nNodeId)
+                block.vCvns[index++] = cvn.second;
+        };
+    }
 
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
@@ -647,7 +654,7 @@ UniValue removecvn(const UniValue& params, bool fHelp)
     LogPrintf("about remove CVN 0x%08x from the network\n", nNodeId);;
 
     if (!ProcessNewCvnBlock(&block, Params()))
-        throw runtime_error(" CvnBlock not accepted");
+        throw runtime_error("CvnBlock not accepted");
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("nodeId", strprintf("0x%08x", nNodeId)));

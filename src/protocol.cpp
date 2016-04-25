@@ -35,7 +35,9 @@ const char *FILTERADD="filteradd";
 const char *FILTERCLEAR="filterclear";
 const char *REJECT="reject";
 const char *SENDHEADERS="sendheaders";
-const char *CVNSIG="cvnsig";
+const char *SIG="sig";
+const char *GETSIGLIST="getsiglist";
+const char *SIGLIST="siglist";
 };
 
 static const char* ppszTypeName[] =
@@ -44,7 +46,7 @@ static const char* ppszTypeName[] =
     NetMsgType::TX,
     NetMsgType::BLOCK,
     "filtered block", // Should never occur
-    NetMsgType::CVNSIG
+    NetMsgType::SIG
 };
 
 /** All known message types. Keep this in the same order as the list of
@@ -73,7 +75,9 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::FILTERCLEAR,
     NetMsgType::REJECT,
     NetMsgType::SENDHEADERS,
-    NetMsgType::CVNSIG,
+    NetMsgType::SIG,
+    NetMsgType::GETSIGLIST,
+    NetMsgType::SIGLIST,
 };
 const static std::vector<std::string> allNetMessageTypesVec(allNetMessageTypes, allNetMessageTypes+ARRAYLEN(allNetMessageTypes));
 

@@ -95,7 +95,7 @@ public:
         genesis = CreateGenesisBlock(1461248303, 0xC001D00D, dynParams);
 
         genesis.vCvns.resize(1);
-        genesis.vCvns[0] = CCvnInfo(0xC001D00D, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+        genesis.vCvns[0] = CCvnInfo(0xC001D00D, 0, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 
@@ -173,7 +173,7 @@ public:
         genesis = CreateGenesisBlock(1458643274, 0xC001D00D, dynParams);
 
         genesis.vCvns.resize(1);
-        genesis.vCvns[0] = CCvnInfo(0xC001D00D, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+        genesis.vCvns[0] = CCvnInfo(0xC001D00D, 0, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 
@@ -250,7 +250,7 @@ public:
         genesis = CreateGenesisBlock(1458643274, 0xC001D00D, dynParams);
 
         genesis.vCvns.resize(1);
-        genesis.vCvns[0] = CCvnInfo(0xC001D00D, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+        genesis.vCvns[0] = CCvnInfo(0xC001D00D, 0, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 

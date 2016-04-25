@@ -34,8 +34,8 @@ bool CvnSign(const uint256& hashUnsignedBlock, CCvnSignature& signature, const u
 bool CvnVerifySignature(const uint256 &hash, const CCvnSignature &sig);
 bool CheckForDuplicateCvns(const CBlock& block);
 void SendCVNSignature(const uint256& hashPrevBlock);
-bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBlock);
-bool CvnValidateSignature(const CBlockHeader& block, const CCvnSignature& signature);
+bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId);
+bool CvnValidateSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId);
 
 /** Check whether a block hash satisfies the proof-of-cooperation requirements */
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&);

@@ -34,6 +34,7 @@
 #include "utilmoneystr.h"
 #include "utilstrencodings.h"
 #include "validationinterface.h"
+#include "miner.h"
 
 #include <sstream>
 
@@ -3109,9 +3110,6 @@ static bool AcceptBlockHeader(const CBlockHeader& block, CValidationState& state
         if (pindexPrev->nStatus & BLOCK_FAILED_MASK)
             return state.DoS(100, error("%s: prev block invalid", __func__), REJECT_INVALID, "bad-prevblk");
 
-        if (block.nHeight != pindexPrev->nHeight + 1)
-            return state.DoS(100, error("%s: block height not continuous", __func__), REJECT_INVALID, "bad-blk-height");
-
         assert(pindexPrev);
         if (fCheckpointsEnabled && !CheckIndexAgainstCheckpoint(pindexPrev, state, chainparams, hash))
             return error("%s: CheckIndexAgainstCheckpoint(): %s", __func__, state.GetRejectReason().c_str());
@@ -4414,6 +4412,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                     LogPrintf("ProcessMessages: advertizing address %s\n", addr.ToString());
                     pfrom->PushAddress(addr);
                 }
+
+                // request peers CVN info list
+                uint32_t nNextCreator = CheckNextBlockCreator(chainActive.Tip());
+                if (nNextCreator)
+                    pfrom->PushMessage(NetMsgType::GETSIGLIST, chainActive.Tip()->GetBlockHash(), nNextCreator);
             }
 
             // Get recent addresses
@@ -4750,7 +4753,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     }
 
 
-    else if (strCommand == NetMsgType::CVNSIG)
+    else if (strCommand == NetMsgType::SIG)
     {
         CCvnSignatureMsg msg;
         vRecv >> msg;
@@ -4767,7 +4770,66 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             if (msg.hashPrev != chainActive.Tip()->GetBlockHash())
                 LogPrint("net", "received outdated CVN signature for block %s: %s\n", msg.hashPrev.ToString(), msg.ToString());
             else
-                AddCvnSignature(msg.GetCvnSignature(), msg.hashPrev);
+                AddCvnSignature(msg.GetCvnSignature(), msg.hashPrev, msg.nCreatorId);
+        } else
+            LogPrint("net", "AlreadyHave sig %s\n", msg.hashPrev.ToString());
+    }
+
+
+    else if (strCommand == NetMsgType::GETSIGLIST)
+    {
+        uint256 hashPeersTip;
+        uint32_t nNextCreator;
+
+        vRecv >> hashPeersTip >> nNextCreator;
+
+        LogPrint("net", "peer %d requests CVN signature list for %u tip: %s\n", pfrom->id, nNextCreator, hashPeersTip.ToString());
+
+        if (mapCvnSigs.count(hashPeersTip)) {
+            LOCK(cs_mapCvnSigs);
+            CvnSigEntryType sigsForHash = mapCvnSigs[hashPeersTip];
+            vector<CCvnSignature> vSigList(sigsForHash.size());
+
+            int i = 0;
+            BOOST_FOREACH(CvnSigEntryType::value_type& cvn, sigsForHash) {
+                vSigList[i++] = cvn.second;
+            }
+
+            if (vSigList.size())
+                pfrom->PushMessage(NetMsgType::SIGLIST, hashPeersTip, nNextCreator, vSigList);
+        }
+    }
+
+
+    else if (strCommand == NetMsgType::SIGLIST)
+    {
+        vector<CCvnSignature> vSigList;
+        uint256 hashPeersTip;
+        uint32_t nNextCreator;
+
+        vRecv >> hashPeersTip;
+        vRecv >> nNextCreator;
+        vRecv >> vSigList;
+
+        LogPrint("net", "received %u CVN signatures for hash %s from peer %d\n", vSigList.size(), hashPeersTip.ToString(), pfrom->id);
+
+        if (hashPeersTip != chainActive.Tip()->GetBlockHash())
+            LogPrint("net", "ignoring CVN signatures because they are not for our chains tip\n");
+        else {
+            if (vSigList.size()) {
+                LOCK(cs_mapCvnSigs);
+                CvnSigEntryType sigsForHash = mapCvnSigs[hashPeersTip];
+
+                for (uint32_t i = 0; i < vSigList.size() ; i++) {
+                    if (!sigsForHash.count(vSigList[i].nSignerId)) {
+                        if (!AddCvnSignature(vSigList[i], hashPeersTip, nNextCreator))
+                            Misbehaving(pfrom->GetId(), 50);
+                    }
+                }
+            } else {
+                // received empty list
+                Misbehaving(pfrom->GetId(), 20);
+            }
         }
     }
 
