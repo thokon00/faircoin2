@@ -119,11 +119,6 @@ public:
         this->nHeightAdded = nHeightAdded;
         this->vPubKey = vPubKey;
     }
-    CCvnInfo(const uint32_t nNodeId, const std::vector<unsigned char> vPubKey)
-    {
-        this->nNodeId = nNodeId;
-        this->vPubKey = vPubKey;
-    }
 
     ADD_SERIALIZE_METHODS;
 
