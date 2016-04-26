@@ -33,6 +33,6 @@ struct CBlockTemplate
 /** Run the CVN thread */
 void RunCertifiedValidationNode(bool fGenerate, const CChainParams& chainparams, uint32_t& nNodeId);
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev);
-uint32_t CheckNextBlockCreator(const CBlockIndex* pindex);
+uint32_t CheckNextBlockCreator(const CBlockIndex* pindex, const int64_t nTimeToTest);
 
 #endif // BITCOIN_MINER_H

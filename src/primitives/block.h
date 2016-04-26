@@ -149,6 +149,7 @@ public:
     uint32_t nMinCvnSigners;
     uint32_t nMaxCvnSigners;
     uint32_t nBlockSpacing; // in seconds
+    uint32_t nBlockSpacingGracePeriod; // in seconds
     uint32_t nDustThreshold; // in µFAIR
     // for a node to create the next block it needs to have cosigned
     // the last nMinSuccessiveSignatures blocks
@@ -169,6 +170,7 @@ public:
         READWRITE(nMinCvnSigners);
         READWRITE(nMaxCvnSigners);
         READWRITE(nBlockSpacing);
+        READWRITE(nBlockSpacingGracePeriod);
         READWRITE(nDustThreshold);
         READWRITE(nMinSuccessiveSignatures);
         READWRITE(vPubKey);
@@ -180,6 +182,7 @@ public:
         nMaxCvnSigners = 0;
         nMinCvnSigners = 0;
         nBlockSpacing = 0;
+        nBlockSpacingGracePeriod = 0;
         nDustThreshold = 0;
         nMinSuccessiveSignatures = 0;
         vPubKey.clear();

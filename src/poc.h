@@ -8,6 +8,7 @@
 #include "consensus/params.h"
 #include "primitives/block.h"
 #include "chainparams.h"
+#include "chain.h"
 #include "sync.h"
 
 #include <stdint.h>
@@ -33,7 +34,7 @@ extern bool fSmartCardUnlocked;
 bool CvnSign(const uint256& hashUnsignedBlock, CCvnSignature& signature, const uint32_t& nNodeId);
 bool CvnVerifySignature(const uint256 &hash, const CCvnSignature &sig);
 bool CheckForDuplicateCvns(const CBlock& block);
-void SendCVNSignature(const uint256& hashPrevBlock);
+void SendCVNSignature(const CBlockIndex *pindexNew);
 bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId);
 bool CvnValidateSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId);
 

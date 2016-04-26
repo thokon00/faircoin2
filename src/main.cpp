@@ -2308,7 +2308,7 @@ void static UpdateTip(CBlockIndex *pindexNew) {
     }
 
     if (fSmartCardUnlocked)
-        SendCVNSignature(pindexNew->GetBlockHash());
+        SendCVNSignature(pindexNew);
 }
 
 /** Disconnect chainActive's tip. You probably want to call mempool.removeForReorg and manually re-limit mempool size after this, with cs_main held. */
@@ -4414,7 +4414,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 }
 
                 // request peers CVN info list
-                uint32_t nNextCreator = CheckNextBlockCreator(chainActive.Tip());
+                uint32_t nNextCreator = CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime());
                 if (nNextCreator)
                     pfrom->PushMessage(NetMsgType::GETSIGLIST, chainActive.Tip()->GetBlockHash(), nNextCreator);
             }

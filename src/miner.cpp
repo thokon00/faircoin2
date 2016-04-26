@@ -322,6 +322,21 @@ static bool ProcessCVNBlock(const CBlock* pblock, const CChainParams& chainparam
     return true;
 }
 
+static uint32_t FindNewlyAddedCVN()
+{
+    return 0;
+}
+
+static uint32_t FindCandidateOffset(const uint64_t nPrevBlockTime, const int64_t nTimeToTest)
+{
+    int nOverdue = nTimeToTest - nPrevBlockTime - dynParams.nBlockSpacing;
+
+    if (nOverdue < (int)dynParams.nBlockSpacingGracePeriod)
+        return 0;
+
+    return nOverdue / dynParams.nBlockSpacingGracePeriod;
+}
+
 typedef boost::unordered_set<uint32_t> TimeWeightSetType;
 typedef vector<uint32_t>::reverse_iterator CandidateIterator;
 
@@ -367,15 +382,21 @@ static const string CreateSignerIdList(const std::vector<CCvnSignature>& vSignat
 
 /**
  * The rules are as follows:
+ * 1. If there is any newly added CVN it is its turn
  * 1. Find the node with the highest time-weight. That's the
  *    node that created its last block the furthest in the past.
- * 2. It must have cosigned the last nCreatorMinSignatures blocks
+ * 2. It must have co-signed the last nCreatorMinSignatures blocks
  *    to proof it's cooperation.
  */
-uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart)
+uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTimeToTest)
 {
-    TimeWeightSetType setCheckedNodes;
-    setCheckedNodes.reserve(mapCVNs.size());
+    uint32_t nNextCreatorId = FindNewlyAddedCVN();
+
+    if (nNextCreatorId)
+        return nNextCreatorId;
+
+    TimeWeightSetType sCheckedNodes;
+    sCheckedNodes.reserve(mapCVNs.size());
     vector<uint32_t> vCreatorCandidates;
     vector<TimeWeightSetType> vLastSignatures;
     uint32_t nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures;
@@ -385,11 +406,7 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart)
         if (!(pindex->nVersion & CBlock::TX_BLOCK)) // we only consider blocks with transactions
             continue;
 
-#if 0
-        if (nMinSuccessiveSignatures)
-            LogPrintf("BLOCK #%06u was created by 0x%08x and signed by %s (%u)\n", pindex->nHeight, pindex->nCreatorId, CreateSignerIdList(pindex->vSignatures), nMinSuccessiveSignatures);
-#endif
-        if (setCheckedNodes.insert(pindex->nCreatorId).second)
+        if (sCheckedNodes.insert(pindex->nCreatorId).second)
             vCreatorCandidates.push_back(pindex->nCreatorId);
 
         if (nMinSuccessiveSignatures) {
@@ -397,7 +414,7 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart)
             AddToSigSets(vLastSignatures, pindex->vSignatures);
         }
     }
-    nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures; // re-initialize
+    nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures; // reset
 
     // the last in the list has the highest time-weight
     CandidateIterator itCandidates = vCreatorCandidates.rbegin();
@@ -407,10 +424,14 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart)
         return 0;
     }
 
-    uint32_t nNextCreatorId = 0;
+    uint32_t nCandidateOffset = FindCandidateOffset(pindexStart->nTime, nTimeToTest);
+    if (nCandidateOffset > vCreatorCandidates.size()) {
+        LogPrintf("CheckNextBlockCreator : ERROR, CandidateOffset exceeds limits: %u > %u\n", nCandidateOffset, vCreatorCandidates.size());
+        return 0;
+    }
 
     do {
-        uint32_t nCreatorCandidate = *(itCandidates++);
+        uint32_t nCreatorCandidate = *(itCandidates += nCandidateOffset);
 
         // check if the candidate signed the last nMinSuccessiveSignatures blocks
         if (HasSignedLastBlocks(vLastSignatures, nCreatorCandidate, nMinSuccessiveSignatures)) {
@@ -509,11 +530,11 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
 #endif
                 if (!sigsForHashPrev.count(nCvnNodeId)) {
                     LogPrintf("could not find signature for tip: %s, resending...\n", hashTip.ToString());
-                    SendCVNSignature(chainActive.Tip()->GetBlockHash());
+                    SendCVNSignature(chainActive.Tip());
                 }
             }
 
-            if (CheckNextBlockCreator(chainActive.Tip()) != nNodeId) {
+            if (CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime()) != nNodeId) {
                 nExtraNonce++; // create some 'randomness' for the coinbase
                 continue;
             }

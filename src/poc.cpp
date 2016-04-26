@@ -322,17 +322,19 @@ bool CvnValidateSignature(const CCvnSignature& signature, const uint256& hashPre
     return CvnVerifySignature(hasher.GetHash(), signature);
 }
 
-void SendCVNSignature(const uint256& hashPrevBlock)
+void SendCVNSignature(const CBlockIndex *pindexNew)
 {
     if (IsInitialBlockDownload())
         return;
 
-    uint32_t nNextCreator = CheckNextBlockCreator(chainActive.Tip());
+    uint32_t nNextCreator = CheckNextBlockCreator(chainActive.Tip(), pindexNew->nTime + 1);
+
     if (!nNextCreator) {
         LogPrintf("SendCVNSignature : could not find next block creator\n");
         return;
     }
 
+    uint256 hashPrevBlock = pindexNew->GetBlockHash();
     CHashWriter hasher(SER_GETHASH, 0);
     hasher << hashPrevBlock << nNextCreator << nCvnNodeId;
 
@@ -433,9 +435,12 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
             return error("signature is invalid: %s", signature.ToString());
     }
 
+    if (!mapBlockIndex.count(block.hashPrevBlock))
+        return error("block hash no hashPrevBlock: %s", block.GetHash().ToString());
+
     uint32_t nBlockCreator = (hashBlock == params.hashGenesisBlock) ?
             block.nCreatorId :
-            CheckNextBlockCreator(mapBlockIndex[block.hashPrevBlock]);
+            CheckNextBlockCreator(mapBlockIndex[block.hashPrevBlock], block.nTime);
 
     if (!nBlockCreator)
         return error("FATAL: can not determine block creator for %s", hashBlock.ToString());
