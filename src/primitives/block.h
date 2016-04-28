@@ -141,6 +141,43 @@ public:
     std::string ToString() const;
 };
 
+class CChainAdmin
+{
+public:
+
+    uint32_t nAdminId;
+    std::vector<unsigned char> vPubKey;
+
+    CChainAdmin()
+    {
+        SetNull();
+    }
+
+    CChainAdmin(const uint32_t nAdminId, const std::vector<unsigned char> vPubKey)
+    {
+        this->nAdminId = nAdminId;
+        this->vPubKey = vPubKey;
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(nAdminId);
+        READWRITE(vPubKey);
+    }
+
+    void SetNull()
+    {
+        nAdminId = 0;
+        vPubKey.clear();
+    }
+
+    uint256 GetHash() const;
+
+    std::string ToString() const;
+};
+
 class CDynamicChainParams
 {
 public:
@@ -151,7 +188,7 @@ public:
     uint32_t nBlockSpacing; // in seconds
     uint32_t nBlockSpacingGracePeriod; // in seconds
     uint32_t nDustThreshold; // in µFAIR
-    // for a node to create the next block it needs to have cosigned
+    // for a node to create the next block it needs to have co-signed
     // the last nMinSuccessiveSignatures blocks
     uint32_t nMinSuccessiveSignatures;
     std::vector<unsigned char> vPubKey;
@@ -204,17 +241,17 @@ class CBlockHeader
 {
 public:
     // header
-    static const int32_t       CURRENT_VERSION = 1;
-    static const int32_t              TX_BLOCK = 1 << 8;
-    static const int32_t             CVN_BLOCK = 1 << 9;
-    static const int32_t CHAIN_PARAMETER_BLOCK = 1 << 10;
-    static const int32_t        BLOCKTYPE_MASK = TX_BLOCK | CVN_BLOCK | CHAIN_PARAMETER_BLOCK;
+    static const int32_t          CURRENT_VERSION = 1;
+    static const int32_t               TX_PAYLOAD = 1 << 8;
+    static const int32_t              CVN_PAYLOAD = 1 << 9;
+    static const int32_t CHAIN_PARAMETERS_PAYLOAD = 1 << 10;
+    static const int32_t     CHAIN_ADMINS_PAYLOAD = 1 << 11;
+    static const int32_t           PAYLOAD_MASK = TX_PAYLOAD | CVN_PAYLOAD | CHAIN_PARAMETERS_PAYLOAD | CHAIN_ADMINS_PAYLOAD;
     int32_t nVersion;
     uint256 hashPrevBlock;
     uint256 hashMerkleRoot;
     uint32_t nTime;
     uint32_t nCreatorId;
-    int nHeight;
     std::vector<CCvnSignature> vSignatures;
 
     CBlockHeader()
@@ -232,7 +269,6 @@ public:
         READWRITE(hashMerkleRoot);
         READWRITE(nTime);
         READWRITE(nCreatorId);
-        READWRITE(nHeight);
         READWRITE(vSignatures);
     }
 
@@ -243,7 +279,6 @@ public:
         hashMerkleRoot.SetNull();
         nTime = 0;
         nCreatorId = 0;
-        nHeight = 0;
         vSignatures.clear();
     }
 
@@ -261,17 +296,22 @@ public:
 
     bool HasCvnInfo() const
     {
-        return (nVersion & CVN_BLOCK);
+        return (nVersion & CVN_PAYLOAD);
     }
 
     bool HasChainParameters() const
     {
-        return (nVersion & CHAIN_PARAMETER_BLOCK);
+        return (nVersion & CHAIN_PARAMETERS_PAYLOAD);
     }
 
     bool HasTx() const
     {
-        return (nVersion & TX_BLOCK);
+        return (nVersion & TX_PAYLOAD);
+    }
+
+    bool HasChainAdmins() const
+    {
+        return (nVersion & CHAIN_ADMINS_PAYLOAD);
     }
 };
 
@@ -279,8 +319,10 @@ class CBlock : public CBlockHeader
 {
 public:
     // network and disk
+    std::vector<unsigned char> vCreatorSignature;
     std::vector<CTransaction> vtx;
     std::vector<CCvnInfo> vCvns;
+    std::vector<CChainAdmin> vChainAdmins;
     CDynamicChainParams dynamicChainParams;
 
     // memory only
@@ -302,6 +344,7 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
         READWRITE(*(CBlockHeader*)this);
+        READWRITE(vCreatorSignature);
 
         if (HasTx())
             READWRITE(vtx);
@@ -309,6 +352,8 @@ public:
             READWRITE(vCvns);
         if (HasChainParameters())
             READWRITE(dynamicChainParams);
+        if (HasChainAdmins())
+            READWRITE(vChainAdmins);
     }
 
     void SetNull()
@@ -316,7 +361,9 @@ public:
         CBlockHeader::SetNull();
         vtx.clear();
         vCvns.clear();
+        vCreatorSignature.clear();
         dynamicChainParams = CDynamicChainParams();
+        vChainAdmins.clear();
         fChecked = false;
     }
 
@@ -328,7 +375,6 @@ public:
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
         block.nCreatorId     = nCreatorId;
-        block.nHeight        = nHeight;
         block.vSignatures    = vSignatures;
         return block;
     }
@@ -336,6 +382,8 @@ public:
     std::string ToString() const;
 
     uint256 HashCVNs() const;
+
+    uint256 HashChainAdmins() const;
 };
 
 

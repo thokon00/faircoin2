@@ -30,6 +30,10 @@
 #include "base58.h"
 #include "poc.h"
 
+#ifdef USE_OPENSC
+#include "smartcard.h"
+#endif
+
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <queue>
@@ -76,7 +80,7 @@ static CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CSc
         pblock->nVersion = GetArg("-blockversion", pblock->nVersion);
 
     // Set block type TX_BLOCK
-    pblock->nVersion |= CBlock::TX_BLOCK;
+    pblock->nVersion |= CBlock::TX_PAYLOAD;
 
     // Create coinbase tx
     CMutableTransaction txNew;
@@ -322,139 +326,6 @@ static bool ProcessCVNBlock(const CBlock* pblock, const CChainParams& chainparam
     return true;
 }
 
-static uint32_t FindNewlyAddedCVN()
-{
-    return 0;
-}
-
-static uint32_t FindCandidateOffset(const uint64_t nPrevBlockTime, const int64_t nTimeToTest)
-{
-    int nOverdue = nTimeToTest - nPrevBlockTime - dynParams.nBlockSpacing;
-
-    if (nOverdue < (int)dynParams.nBlockSpacingGracePeriod)
-        return 0;
-
-    return nOverdue / dynParams.nBlockSpacingGracePeriod;
-}
-
-typedef boost::unordered_set<uint32_t> TimeWeightSetType;
-typedef vector<uint32_t>::reverse_iterator CandidateIterator;
-
-static void AddToSigSets(vector<TimeWeightSetType>& vLastSignatures, const vector<CCvnSignature>& vSignatures)
-{
-    TimeWeightSetType signers;
-
-    BOOST_FOREACH(const CCvnSignature& sig, vSignatures) {
-        signers.insert(sig.nSignerId);
-    }
-
-    vLastSignatures.push_back(signers);
-}
-
-static bool HasSignedLastBlocks(const vector<TimeWeightSetType>& vLastSignatures, const uint32_t& nCreatorCandidate, const uint32_t& nMinSuccessiveSignatures)
-{
-    uint32_t nSignatures = 0;
-
-    BOOST_FOREACH(const TimeWeightSetType& signers, vLastSignatures) {
-        if (signers.count(nCreatorCandidate)) {
-            nSignatures++;
-        } else {
-            if (nSignatures < nMinSuccessiveSignatures)
-                return false;
-        }
-    }
-
-    return (nSignatures >= nMinSuccessiveSignatures);
-}
-
-#if 0
-static const string CreateSignerIdList(const std::vector<CCvnSignature>& vSignatures)
-{
-    std::stringstream s;
-
-    BOOST_FOREACH(const CCvnSignature& sig, vSignatures) {
-        s << strprintf("%s%08x", (s.tellp() > 0) ? "," : "", sig.nSignerId);
-    }
-
-    return s.str();
-}
-#endif
-
-/**
- * The rules are as follows:
- * 1. If there is any newly added CVN it is its turn
- * 1. Find the node with the highest time-weight. That's the
- *    node that created its last block the furthest in the past.
- * 2. It must have co-signed the last nCreatorMinSignatures blocks
- *    to proof it's cooperation.
- */
-uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTimeToTest)
-{
-    uint32_t nNextCreatorId = FindNewlyAddedCVN();
-
-    if (nNextCreatorId)
-        return nNextCreatorId;
-
-    TimeWeightSetType sCheckedNodes;
-    sCheckedNodes.reserve(mapCVNs.size());
-    vector<uint32_t> vCreatorCandidates;
-    vector<TimeWeightSetType> vLastSignatures;
-    uint32_t nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures;
-
-    // first create a list of creator candidates
-    for (const CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev) {
-        if (!(pindex->nVersion & CBlock::TX_BLOCK)) // we only consider blocks with transactions
-            continue;
-
-        if (sCheckedNodes.insert(pindex->nCreatorId).second)
-            vCreatorCandidates.push_back(pindex->nCreatorId);
-
-        if (nMinSuccessiveSignatures) {
-            nMinSuccessiveSignatures--;
-            AddToSigSets(vLastSignatures, pindex->vSignatures);
-        }
-    }
-    nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures; // reset
-
-    // the last in the list has the highest time-weight
-    CandidateIterator itCandidates = vCreatorCandidates.rbegin();
-
-    if (!vCreatorCandidates.size()) {
-        LogPrintf("CheckNextBlockCreator : ERROR, could not find any creator node candidates\n");
-        return 0;
-    }
-
-    uint32_t nCandidateOffset = FindCandidateOffset(pindexStart->nTime, nTimeToTest);
-    if (nCandidateOffset > vCreatorCandidates.size()) {
-        LogPrintf("CheckNextBlockCreator : ERROR, CandidateOffset exceeds limits: %u > %u\n", nCandidateOffset, vCreatorCandidates.size());
-        return 0;
-    }
-
-    do {
-        uint32_t nCreatorCandidate = *(itCandidates += nCandidateOffset);
-
-        // check if the candidate signed the last nMinSuccessiveSignatures blocks
-        if (HasSignedLastBlocks(vLastSignatures, nCreatorCandidate, nMinSuccessiveSignatures)) {
-            nNextCreatorId = nCreatorCandidate;
-            break;
-        }
-
-        // if we did not find a candidate who signed enough successive blocks we lower
-        // our requirement to avoid the block chain become stalled
-        if (itCandidates == vCreatorCandidates.rend()) {
-            nMinSuccessiveSignatures--;
-            LogPrintf("CheckNextBlockCreator: WARNING, could not find a CVN that signed enough successive blocks. Lowering number of required sigs to %u\n", nMinSuccessiveSignatures);
-        }
-    } while(nMinSuccessiveSignatures);
-
-    if (nNextCreatorId)
-        LogPrintf("NODE ID 0x%08x should create the next block #%u\n", nNextCreatorId, pindexStart->nHeight + 1);
-    else
-        LogPrintf("ERROR, could not find any Node ID that should create the next block #%u\n", pindexStart->nHeight + 1);
-
-    return nNextCreatorId;
-}
-
 void static CertifiedValidationNode(const CChainParams& chainparams, const uint32_t& nNodeId)
 {
     SetThreadPriority(THREAD_PRIORITY_NORMAL);
@@ -463,20 +334,24 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
     bool fBoostrap = chainActive.Tip()->GetBlockHash() == chainparams.GetConsensus().hashGenesisBlock;
 
     if (fBoostrap) {
-        CHashWriter hasher(SER_GETHASH, 0);
-        hasher << chainparams.GetConsensus().hashGenesisBlock << 0xc001d00d << 0xc001d00d;
-
         CCvnSignature signature;
-        if (!CvnSign(hasher.GetHash(), signature, nCvnNodeId)) {
+        if (!CvnSign(chainparams.GetConsensus().hashGenesisBlock, signature, GENESIS_NODE_ID, GENESIS_NODE_ID)) {
             LogPrintf("SendCVNSignature : %u could not sign block\n", nCvnNodeId);
             return;
         }
 
-        AddCvnSignature(signature, chainparams.GetConsensus().hashGenesisBlock, 0xc001d00d);
+        AddCvnSignature(signature, chainparams.GetConsensus().hashGenesisBlock, GENESIS_NODE_ID);
     }
 
-    while (!fSmartCardUnlocked || (IsInitialBlockDownload() && !fBoostrap))
-        MilliSleep(1000); // give some time to start up everything
+#ifdef USE_OPENSC
+    // wait for smartcard init
+    if (GetBoolArg("-usesmartcard", false))
+        while (!fSmartCardUnlocked && !ShutdownRequested())
+            MilliSleep(500);
+#endif
+
+    while (IsInitialBlockDownload() && !fBoostrap && !ShutdownRequested())
+        MilliSleep(1000);
 
     LogPrintf("Certified validation node started for node ID 0x%08x\n", nNodeId);
 
@@ -558,7 +433,6 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
             UpdateCoinbase(pblock, pindexPrev, nExtraNonce);
 
             pblock->nCreatorId = nNodeId;
-            pblock->nHeight = pindexPrev->nHeight + 1;
 
             uint256 hashBlock = pblock->hashPrevBlock;
             {
@@ -574,15 +448,19 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                 }
             }
 
-            LogPrintf("creating block with %u transactions, %u CvnInfo (%u bytes)\n", pblock->vtx.size(), pblock->vCvns.size(),
+            LogPrintf("creating and signing block with %u transactions, %u CvnInfo (%u bytes)\n", pblock->vtx.size(), pblock->vCvns.size(),
                 ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION));
 
-            if (ProcessCVNBlock(pblock, chainparams))
-            {
-                LOCK(cs_mapCvnSigs);
-                mapCvnSigs.erase(hashBlock);
-            } else
-                LogPrintf("ERROR: block not accepted %s\n", pblock->GetHash().ToString());
+            if (!CvnSignBlock(*pblock)) {
+                LogPrintf("ERROR: could not sign block %s\n", pblock->GetHash().ToString());
+            } else {
+                if (ProcessCVNBlock(pblock, chainparams))
+                {
+                    LOCK(cs_mapCvnSigs);
+                    mapCvnSigs.erase(hashBlock);
+                } else
+                    LogPrintf("ERROR: block not accepted %s\n", pblock->GetHash().ToString());
+            }
 
             coinbaseScript->KeepScript();
 

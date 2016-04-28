@@ -102,11 +102,11 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "prioritisetransaction", 2 },
     { "setban", 2 },
     { "setban", 3 },
-    { "addcvn", 1 },
-    { "addcvn", 3 },
+    { "addcvn", 2 },
     { "addcvn", 4 },
-    { "removecvn", 1 },
+    { "addcvn", 5 },
     { "removecvn", 2 },
+    { "removecvn", 3 },
 };
 
 class CRPCConvertTable

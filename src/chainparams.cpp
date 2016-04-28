@@ -20,7 +20,7 @@
 
 CDynamicChainParams dynParams;
 
-//#define SHOW_HASHES 1
+#define SHOW_GENESIS_HASHES 0
 
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nCreatorId, const CDynamicChainParams& dynamicChainParams)
 {
@@ -28,12 +28,12 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nCreatorId, const CDyn
     txNew.nVersion = 1;
     txNew.vin.resize(1);
     txNew.vout.resize(1);
-    txNew.vin[0].scriptSig = CScript() << 0xc001d00d;
+    txNew.vin[0].scriptSig = CScript() << GENESIS_NODE_ID;
     txNew.vout[0].nValue = MAX_MONEY; // the take over from FairCoin1
     txNew.vout[0].scriptPubKey = CScript() << ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88") << OP_CHECKSIG;
 
     CBlock genesis;
-    genesis.nVersion   = CBlock::CURRENT_VERSION | CBlock::TX_BLOCK | CBlock::CVN_BLOCK | CBlock::CHAIN_PARAMETER_BLOCK;
+    genesis.nVersion   = CBlock::CURRENT_VERSION | CBlock::TX_PAYLOAD | CBlock::CVN_PAYLOAD | CBlock::CHAIN_PARAMETERS_PAYLOAD | CBlock::CHAIN_ADMINS_PAYLOAD;
     genesis.nTime      = nTime;
     genesis.nCreatorId = nCreatorId;
     genesis.hashPrevBlock.SetNull();
@@ -87,32 +87,40 @@ public:
 
         CDynamicChainParams dynParams;
         dynParams.nBlockSpacing = 3 * 60;
-        dynParams.nMaxCvnSigners = 1;
-        dynParams.nMinCvnSigners = 1;
+        dynParams.nBlockSpacingGracePeriod = 60;
+        dynParams.nMaxCvnSigners = 11;
+        dynParams.nMinCvnSigners = 3;
         dynParams.nDustThreshold = 10000; // µFAIR
         dynParams.nMinSuccessiveSignatures = 1;
 
-        genesis = CreateGenesisBlock(1461248303, 0xC001D00D, dynParams);
+        genesis = CreateGenesisBlock(1461766275, GENESIS_NODE_ID, dynParams);
 
         genesis.vCvns.resize(1);
-        genesis.vCvns[0] = CCvnInfo(0xC001D00D, 0, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+        genesis.vCvns[0] = CCvnInfo(GENESIS_NODE_ID, 0, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+
+        genesis.vChainAdmins.resize(3);
+        genesis.vChainAdmins[0] = CChainAdmin(0xad000001, ParseHex("04a1fe3aee6cd4b05d06cd7c686cf45a7820a9e28adb090e6576e8885f1013a829e1bbee64001b22d54825932e7602a04adf1e2511f765c6ab9792482b58063494"));
+        genesis.vChainAdmins[1] = CChainAdmin(0xad000002, ParseHex("045420bd35ada00cee9a194eb4cde20ff6f18b55235ac3ce5cbccbbbe97caa00d610c19d5006bf4193fe45e2c5a380f6a490972bedbda7d875de83478604eb0043"));
+        genesis.vChainAdmins[2] = CChainAdmin(0xad000003, ParseHex("044bf8939429e9f53b8b8f8b5bd07bc72b056bc58414eb319c050a4d7ab4a8de0053a694a1f35e80db4c480f5de25ca8e1a0d5b289138f055b04945e73e964c417"));
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 
-        CCvnSignature genesisSignature(0xC001D00D, ParseHex("304402202aa6c9fd6c06542a1b175f33c3c8c4aef155d6180711e3ba30be250eb90ef03602201a459ff70f729630c5dd47ef601efa3847ee24073f8f3d9a4068e74c6da232cd"));
+        CCvnSignature genesisSignature(GENESIS_NODE_ID, ParseHex("304402202aa6c9fd6c06542a1b175f33c3c8c4aef155d6180711e3ba30be250eb90ef03602201a459ff70f729630c5dd47ef601efa3847ee24073f8f3d9a4068e74c6da232cd"));
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
+
+        genesis.vCreatorSignature = ParseHex("30440220422381f6131ca21cff20bb5b8e7bc5974bd84883ad087b117a7e10d9310526dc0220358ce4433c79b167d3016084b11ad7b19e91de83952ee336790693fcf3599353");
 
         consensus.hashGenesisBlock = genesis.GetHash();
         printf("genesis block main net:\n%s\n", genesis.ToString().c_str());
 
-#ifdef SHOW_HASHES
+#if SHOW_GENESIS_HASHES
         printf("%s parameters\nhash: %s\nmerkle: %s\n",strNetworkID.c_str(),
                 consensus.hashGenesisBlock.ToString().c_str(),
                 genesis.hashMerkleRoot.ToString().c_str());
 #else
         // also update checkpoints!
-        assert(consensus.hashGenesisBlock == uint256S("864cbe42f27831509a33654308ec0173b2212a101675809e429fec7a76dd7f3b"));
-        assert(genesis.hashMerkleRoot == uint256S("109163d7eca9f3deb276e60e5670ac714f0841d2c74c3ff25f3a551a7b4d2422"));
+        assert(consensus.hashGenesisBlock == uint256S("0420b6c4f86c905d72d6af018b364d35a250dd972abf02649bad6912c8c1c423"));
+        assert(genesis.hashMerkleRoot == uint256S("6105fa77f78df2201224dbe29212d5a91eb1eec42b750acf7071c56d1880e416"));
 #endif
         vSeeds.push_back(CDNSSeedData("1.fair-coin.org", "faircoin2-seed1.fair-coin.org")); // Thomas König
         vSeeds.push_back(CDNSSeedData("2.fair-coin.org", "faircoin2-seed2.fair-coin.org")); // Thomas König
@@ -133,8 +141,8 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            ( 0, uint256S("864cbe42f27831509a33654308ec0173b2212a101675809e429fec7a76dd7f3b")),
-            1461248303, // * UNIX timestamp of last checkpoint block
+            ( 0, uint256S("0420b6c4f86c905d72d6af018b364d35a250dd972abf02649bad6912c8c1c423")),
+            1461766275, // * UNIX timestamp of last checkpoint block
             0,   // * total number of transactions between genesis and last checkpoint
                         //   (the tx=... number in the SetBestChain debug.log lines)
             0.0     // * estimated number of transactions per day after checkpoint
@@ -165,29 +173,31 @@ public:
         nMaxTipAge = 0x7fffffff;
         nPruneAfterHeight = 1000;
         CDynamicChainParams dynParams;
-        dynParams.nBlockSpacing = 3 * 60;
+        dynParams.nBlockSpacing = 2 * 60;
+        dynParams.nBlockSpacingGracePeriod = 45;
         dynParams.nMaxCvnSigners = 1;
         dynParams.nMinCvnSigners = 1;
         dynParams.nDustThreshold = 10000; // µFAIR
+        dynParams.nMinSuccessiveSignatures = 1;
 
-        genesis = CreateGenesisBlock(1458643274, 0xC001D00D, dynParams);
+        genesis = CreateGenesisBlock(1461766275, GENESIS_NODE_ID, dynParams);
 
         genesis.vCvns.resize(1);
-        genesis.vCvns[0] = CCvnInfo(0xC001D00D, 0, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+        genesis.vCvns[0] = CCvnInfo(GENESIS_NODE_ID, 0, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 
-        CCvnSignature genesisSignature(0xC001CAFE);
+        CCvnSignature genesisSignature(GENESIS_NODE_ID);
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
-#ifdef SHOW_HASHES
+#if SHOW_GENESIS_HASHES
         printf("%s parameters\nhash: %s\nmerkle: %s\n",strNetworkID.c_str(),
                 consensus.hashGenesisBlock.ToString().c_str(),
                 genesis.hashMerkleRoot.ToString().c_str());
 #else
-        assert(consensus.hashGenesisBlock == uint256S("abdc463cf781e266c91ea25a43fbce67261654102767ae3bb305442ae28866b0"));
-        assert(genesis.hashMerkleRoot == uint256S("9f470d4e6fb2b61a55589cdb16edf747d467465a26eb6e242ebb5a5b28d92d34"));
+        assert(consensus.hashGenesisBlock == uint256S("67bbbc05544bd3b02451ecdeba70c81b6807daf07269e8f950c2dd2ad572217b"));
+        assert(genesis.hashMerkleRoot == uint256S("12213e911d6bc64acee32f5ec135e278ad8312c813bb7969728fbca9c17fc617"));
 #endif
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -210,8 +220,8 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            ( 0, uint256S("0x61d9f3c05a04e3aaea24466ab27d56ca7c4ee76b6ca0f509f824eb18962b53ce")),
-            1458643274,
+            ( 0, uint256S("67bbbc05544bd3b02451ecdeba70c81b6807daf07269e8f950c2dd2ad572217b")),
+            1461766275,
             1488,
             300
         };
@@ -243,28 +253,31 @@ public:
         nPruneAfterHeight = 1000;
         CDynamicChainParams dynParams;
         dynParams.nBlockSpacing = 1 * 60;
+        dynParams.nBlockSpacingGracePeriod = 30;
         dynParams.nMaxCvnSigners = 1;
         dynParams.nMinCvnSigners = 1;
         dynParams.nDustThreshold = 10000; // µFAIR
+        dynParams.nMinSuccessiveSignatures = 1;
 
-        genesis = CreateGenesisBlock(1458643274, 0xC001D00D, dynParams);
+
+        genesis = CreateGenesisBlock(1461766275, GENESIS_NODE_ID, dynParams);
 
         genesis.vCvns.resize(1);
-        genesis.vCvns[0] = CCvnInfo(0xC001D00D, 0, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
+        genesis.vCvns[0] = CCvnInfo(GENESIS_NODE_ID, 0, ParseHex("04e27d35f6f56ab5a1974cc9bd59a9e0a130d5269487a5c061c15ce837e188b8a9f85bab72168c1a1570d5fdffa3c0acc04f4824446919f96be90a007738040c88"));
 
         genesis.hashMerkleRoot = BlockMerkleRoot(genesis);
 
-        CCvnSignature genesisSignature(0xCAFEBABE);
+        CCvnSignature genesisSignature(GENESIS_NODE_ID);
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
         consensus.hashGenesisBlock = genesis.GetHash();
-#ifdef SHOW_HASHES
+#if SHOW_GENESIS_HASHES
         printf("%s parameters\nhash: %s\nmerkle: %s\n",strNetworkID.c_str(),
                 consensus.hashGenesisBlock.ToString().c_str(),
                 genesis.hashMerkleRoot.ToString().c_str());
 #else
-        assert(consensus.hashGenesisBlock == uint256S("c80274f7aad1ca3266f267e207e57ca24df83545e9184d877886f815df70262a"));
-        assert(genesis.hashMerkleRoot == uint256S("96f0414d09a85fe992b38e33389bca2d2a795279a69f3323eacf12cdaa218e23"));
+        assert(consensus.hashGenesisBlock == uint256S("14d94ab89f3708e9b7d0c5943e5e1da3ff58453a1d9827146580f7657d6dbf1e"));
+        assert(genesis.hashMerkleRoot == uint256S("c30949a5d8f7d9a405158e0e47be8035d93b47abb4a29776a0ce4799e7f94d04"));
 #endif
         vFixedSeeds.clear(); //! Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();  //! Regtest mode doesn't have any DNS seeds.
@@ -277,8 +290,8 @@ public:
 
         checkpointData = (CCheckpointData){
             boost::assign::map_list_of
-            ( 0, uint256S("0x5daec43cedbd536e7bd5f8a9112eb8c76fd11a275300ffa24e429dcfa6f36a28")),
-            0,
+            ( 0, uint256S("14d94ab89f3708e9b7d0c5943e5e1da3ff58453a1d9827146580f7657d6dbf1e")),
+            1461766275,
             0,
             0
         };

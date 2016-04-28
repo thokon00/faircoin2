@@ -170,15 +170,14 @@ uint256 BlockMerkleRoot(const CBlock& block, bool* mutated)
     } else
         if (mutated) *mutated = false;
 
-    if (block.HasCvnInfo()) {
-        uint256 hash = SerializeHash(block.vCvns);
-        hashes.push_back(hash);
-    }
+    if (block.HasCvnInfo())
+        hashes.push_back(block.HashCVNs());
 
-    if (block.HasChainParameters()) {
-        uint256 hash = SerializeHash(block.dynamicChainParams);
-        hashes.push_back(hash);
-    }
+    if (block.HasChainParameters())
+        hashes.push_back(block.dynamicChainParams.GetHash());
+
+    if (block.HasChainAdmins())
+        hashes.push_back(block.HashChainAdmins());
 
     // if the block only has txs we directly return ComputeMerkleRoot()
     if (block.HasTx() && hashes.size() == 1)

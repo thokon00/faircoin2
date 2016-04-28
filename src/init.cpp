@@ -64,6 +64,10 @@
 #include "zmq/zmqnotificationinterface.h"
 #endif
 
+#ifdef USE_OPENSC
+#include "smartcard.h"
+#endif
+
 using namespace std;
 
 #ifdef ENABLE_WALLET
@@ -1040,7 +1044,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         fEnableReplacement = (std::find(vstrReplacementModes.begin(), vstrReplacementModes.end(), "fee") != vstrReplacementModes.end());
     }
 
-    // ********************************************************* Step 4: application initialization: dir lock, daemonize, pidfile, debug log
+    // ********************************************************* Step 4: application initialization: dir lock, daemonize, pidfile, debug log, smartcard
 
     // Initialize elliptic curve code
     ECC_Start();
@@ -1117,6 +1121,14 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             return InitError(_("Unable to start HTTP server. See debug log for details."));
     }
 
+#ifdef USE_OPENSC
+    if (GetBoolArg("-usesmartcard", false)) {
+        LogPrintf("Initializing smartcard\n");
+        uiInterface.InitMessage(_("Initializing smartcard..."));
+        InitSmartCard();
+    }
+#endif
+
     int64_t nStart;
 
     // ********************************************************* Step 5: verify wallet database integrity and set up CVN
@@ -1159,18 +1171,19 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                 nCvnNodeId = 0;
                 return InitError("invalid CVN private key supplied\n");
             }
-
-#if 0
-            CBlock genesis = chainparams.GenesisBlock();
-            UpdateCvnInfo(&genesis);
-            CHashWriter hasher(SER_GETHASH, 0);
-            hasher << genesis.hashPrevBlock << 0xc001d00d << 0xc001d00d;
-
-            CCvnSignature blockSig;
-            CvnSign(hasher.GetHash(), blockSig, 0xc001d00d);
-            LogPrintf("Genesis signature: %s\n", HexStr(blockSig.vSignature));
-#endif
         }
+#if 0
+        CBlock genesis = chainparams.GenesisBlock();
+        UpdateCvnInfo(&genesis);
+        UpdateChainAdmins(&genesis);
+
+        CCvnSignature blockSig;
+        CvnSign(genesis.hashPrevBlock, blockSig, GENESIS_NODE_ID, GENESIS_NODE_ID);
+        LogPrintf("Genesis PoC signature: %s\n", HexStr(blockSig.vSignature));
+
+        CvnSignBlock(genesis);
+        LogPrintf("Genesis block signature: %s\n", HexStr(genesis.vCreatorSignature));
+#endif
     }
 
     // ********************************************************* Step 6: network initialization
@@ -1310,6 +1323,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     CBlock genesis = chainparams.GenesisBlock();
     UpdateCvnInfo(&genesis);
     UpdateChainParameters(&genesis);
+    UpdateChainAdmins(&genesis);
 
     fReindex = GetBoolArg("-reindex", false);
 

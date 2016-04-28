@@ -31,6 +31,11 @@ uint256 CBlock::HashCVNs() const
     return SerializeHash(this->vCvns);
 }
 
+uint256 CBlock::HashChainAdmins() const
+{
+    return SerializeHash(this->vChainAdmins);
+}
+
 uint256 CDynamicChainParams::GetHash() const
 {
     return SerializeHash(*this);
@@ -39,10 +44,10 @@ uint256 CDynamicChainParams::GetHash() const
 std::string CDynamicChainParams::ToString() const
 {
 	std::stringstream s;
-	    s << strprintf("CDynamicChainParams(ver=%d, minCvnSigners=%u, maxCvnSigners=%u, blockSpacing=%u, dustThreshold=%u, minSuccessiveSignatures=%u)",
+	    s << strprintf("CDynamicChainParams(ver=%d, minCvnSigners=%u, maxCvnSigners=%u, blockSpacing=%u, blockSpacingGracePeriod=%u, dustThreshold=%u, minSuccessiveSignatures=%u)",
 	        nVersion,
 			nMinCvnSigners, nMaxCvnSigners,
-			nBlockSpacing,
+			nBlockSpacing, nBlockSpacingGracePeriod,
 			nDustThreshold,
 			nMinSuccessiveSignatures
 		);
@@ -67,8 +72,17 @@ std::string CCvnSignature::ToString() const
 std::string CCvnInfo::ToString() const
 {
     std::stringstream s;
-    s << strprintf("CCvnInfo(nodeId=%u, pubkey=%s)",
-        nNodeId,
+    s << strprintf("CCvnInfo(nodeId=%u, heightAdded=%u, pubkey=%s)",
+        nNodeId, nHeightAdded,
+        HexStr(vPubKey));
+    return s.str();
+}
+
+std::string CChainAdmin::ToString() const
+{
+    std::stringstream s;
+    s << strprintf("CChainAdmin(adminId=%u, pubkey=%s)",
+        nAdminId,
         HexStr(vPubKey));
     return s.str();
 }
@@ -83,14 +97,18 @@ std::string CBlock::ToString() const
         payload << strprintf("%scvninfo", (payload.tellp() > 0) ? "," : "");
     if (HasChainParameters())
         payload << strprintf("%sparams", (payload.tellp() > 0) ? "," : "");
+    if (HasChainAdmins())
+        payload << strprintf("%sadmins", (payload.tellp() > 0) ? "," : "");
 
-    s << strprintf("CBlock(%u)(hash=%s, ver=%d, payload=%s, hashPrevBlock=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=%u, signatures=%u, vtx=%u)\n",
-        nHeight, GetHash().ToString(),
+    s << strprintf("CBlock(hash=%s, ver=%d, payload=%s, hashPrevBlock=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=%u, signatures=%u, vtx=%u)\n",
+        GetHash().ToString(),
         nVersion & 0xff, payload.str(),
         hashPrevBlock.ToString(),
         hashMerkleRoot.ToString(),
         nTime, nCreatorId, vSignatures.size(),
         vtx.size());
+    s << "  CreatorSignature: " << HexStr(vCreatorSignature) << "\n";
+
     for (unsigned int i = 0; i < vSignatures.size(); i++)
     {
         s << "  " << vSignatures[i].ToString() << "\n";
@@ -105,6 +123,13 @@ std::string CBlock::ToString() const
     if (HasChainParameters())
     {
         s << dynamicChainParams.ToString() << "\n";
+    }
+    if (HasChainAdmins())
+    {
+        for (unsigned int i = 0; i < vChainAdmins.size(); i++)
+        {
+            s << "  " << vChainAdmins[i].ToString() << "\n";
+        }
     }
     if (HasTx())
     {

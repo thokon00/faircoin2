@@ -2292,12 +2292,12 @@ void static UpdateTip(CBlockIndex *pindexNew) {
         const CBlockIndex* pindex = chainActive.Tip();
         for (int i = 0; i < 100 && pindex != NULL; i++)
         {
-            if ((pindex->nVersion & ~CBlock::BLOCKTYPE_MASK) > CBlock::CURRENT_VERSION)
+            if ((pindex->nVersion & ~CBlock::PAYLOAD_MASK) > CBlock::CURRENT_VERSION)
                 ++nUpgraded;
             pindex = pindex->pprev;
         }
         if (nUpgraded > 0)
-            LogPrintf("%s: %d of last 100 blocks above version %d\n", __func__, nUpgraded, (int)(CBlock::CURRENT_VERSION & ~CBlock::BLOCKTYPE_MASK));
+            LogPrintf("%s: %d of last 100 blocks above version %d\n", __func__, nUpgraded, (int)(CBlock::CURRENT_VERSION & ~CBlock::PAYLOAD_MASK));
         if (nUpgraded > 100/2)
         {
             // strMiscWarning is read by GetWarnings(), called by Qt and the JSON-RPC code to warn the user:
@@ -2307,7 +2307,7 @@ void static UpdateTip(CBlockIndex *pindexNew) {
         }
     }
 
-    if (fSmartCardUnlocked)
+    if (nCvnNodeId)
         SendCVNSignature(pindexNew);
 }
 
@@ -2747,6 +2747,7 @@ CBlockIndex* AddToBlockIndex(const CBlockHeader& block)
     if (miPrev != mapBlockIndex.end())
     {
         pindexNew->pprev = (*miPrev).second;
+        pindexNew->nHeight = pindexNew->pprev->nHeight + 1;
         pindexNew->BuildSkip();
     }
     pindexNew->nChainWork = (pindexNew->pprev ? pindexNew->pprev->nChainWork : 1) + GetBlockProof(*pindexNew);
@@ -2896,7 +2897,7 @@ bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, unsigne
 bool CheckBlockHeader(const CBlockHeader& block, CValidationState& state, bool fCheckPOC)
 {
     // Check if we have at least one of TX, CVN or CHAIN_PARAMS bits set
-    if (!(block.nVersion & CBlock::BLOCKTYPE_MASK))
+    if (!(block.nVersion & CBlock::PAYLOAD_MASK))
         return state.DoS(50, error("CheckBlockHeader(): invalid block version. No block type defined"),
                          REJECT_INVALID, "no-blk-type", true);
 
@@ -2924,6 +2925,13 @@ bool CheckBlock(const CBlock& block, CValidationState& state, bool fCheckPOW, bo
     if (!CheckBlockHeader(block, state, fCheckPOW))
         return false;
 
+    if (fCheckPOW) {
+        // check for correct signature of the block hash by the creator
+        CCvnSignature creatorSignature(block.nCreatorId, block.vCreatorSignature);
+        if (!CvnVerifySignature(block.GetHash(), creatorSignature))
+            return false;
+    }
+
     // Check the merkle root.
     if (fCheckMerkleRoot) {
         bool mutated;
@@ -2950,8 +2958,18 @@ bool CheckBlock(const CBlock& block, CValidationState& state, bool fCheckPOW, bo
                          REJECT_INVALID, "bad-blk-length-cvn");
 
         if (!CheckForDuplicateCvns(block))
-            return state.DoS(100, error("CheckBlock(): duplicate entries in CVN block"),
+            return state.DoS(100, error("CheckBlock(): duplicate entries in CVN payload"),
                          REJECT_INVALID, "bad-dupl-cvn");
+    }
+
+    if (block.HasChainAdmins()) {
+        if (block.vChainAdmins.empty() || block.vChainAdmins.size() > MAX_NUMBER_OF_CHAIN_ADMINS)
+            return state.DoS(100, error("CheckBlock(): ChainAdmins size limits exceeded"),
+                         REJECT_INVALID, "bad-blk-length-adm");
+
+        if (!CheckForDuplicateChainAdmins(block))
+            return state.DoS(100, error("CheckBlock(): duplicate entries in chain admins payload"),
+                         REJECT_INVALID, "bad-dupl-adm");
     }
 
     if (block.HasChainParameters() && !CheckDynamicChainParameters(block.dynamicChainParams))
@@ -3222,6 +3240,9 @@ bool ProcessNewBlock(CValidationState& state, const CChainParams& chainparams, c
 
     if (pblock->HasChainParameters())
         UpdateChainParameters(pblock);
+
+    if (pblock->HasChainAdmins())
+        UpdateChainAdmins(pblock);
 
     return true;
 }
@@ -3548,38 +3569,44 @@ CVerifyDB::~CVerifyDB()
 
 bool CVerifyDB::SetMostRecentCVNData(const CChainParams& chainparams, CBlockIndex* pindexStart)
 {
-    bool fFoundCvnInfoBlock = false, fFoundDynamicChainParamsBlock = false;
+    bool fFoundCvnInfoPayload = false, fFoundDynamicChainParamsPayload = false, fFoundChainAdminsPayload = false;
 
     for (CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev)
     {
-        if (pindex->nVersion & (CBlock::CVN_BLOCK | CBlock::CHAIN_PARAMETER_BLOCK)) {
+        if (pindex->nVersion & (CBlock::CVN_PAYLOAD | CBlock::CHAIN_PARAMETERS_PAYLOAD | CBlock::CHAIN_ADMINS_PAYLOAD)) {
             CBlock block;
             // check level 0: read from disk
             if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus()))
                 return error("SetMostrecentCVNData(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
 
-            if (!fFoundCvnInfoBlock && block.HasCvnInfo()) {
+            if (!fFoundCvnInfoPayload && block.HasCvnInfo()) {
                 UpdateCvnInfo(&block);
-
-                fFoundCvnInfoBlock = true;
+                fFoundCvnInfoPayload = true;
             }
 
-            if (!fFoundDynamicChainParamsBlock && block.HasChainParameters()) {
+            if (!fFoundDynamicChainParamsPayload && block.HasChainParameters()) {
                 UpdateChainParameters(&block);
+                fFoundDynamicChainParamsPayload = true;
+            }
 
-                fFoundDynamicChainParamsBlock = true;
+            if (!fFoundChainAdminsPayload && block.HasChainAdmins()) {
+                UpdateChainAdmins(&block);
+                fFoundChainAdminsPayload = true;
             }
         }
 
-        if (fFoundCvnInfoBlock && fFoundDynamicChainParamsBlock)
+        if (fFoundCvnInfoPayload && fFoundDynamicChainParamsPayload && fFoundChainAdminsPayload)
             return true;
     }
 
-    if (!fFoundCvnInfoBlock)
-        LogPrintf("SetMostRecentCVNData(): *** could not find a CvnInfo block. Can not continue.\n");
+    if (!fFoundCvnInfoPayload)
+        LogPrintf("SetMostRecentCVNData(): *** could not find a block with CvnInfo. Can not continue.\n");
 
-    if (!fFoundDynamicChainParamsBlock)
-        LogPrintf("SetMostRecentCVNData(): *** could not find a chain params block. Can not continue.\n");
+    if (!fFoundDynamicChainParamsPayload)
+        LogPrintf("SetMostRecentCVNData(): *** could not find a block with chain params payload. Can not continue.\n");
+
+    if (!fFoundChainAdminsPayload)
+        LogPrintf("SetMostRecentCVNData(): *** could not find a block with chain admins payload. Can not continue.\n");
 
     return false;
 }
@@ -3617,7 +3644,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
         if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus()))
             return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
         // find the most recent CVN and ChainParams block
-        if (pindex->pprev && (block.HasCvnInfo() || block.HasChainParameters()))
+        if (pindex->pprev && (block.HasCvnInfo() || block.HasChainParameters() || block.HasChainAdmins()))
             if (!SetMostRecentCVNData(chainparams, pindex->pprev))
                 return error("VerifyDB(): *** SetMostRecentCVNData failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
         // check level 1: verify block validity
@@ -3672,6 +3699,9 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
 
             if (block.HasChainParameters())
                 UpdateChainParameters(&block);
+
+            if (block.HasChainAdmins())
+                UpdateChainAdmins(&block);
         }
     }
 

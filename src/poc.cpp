@@ -11,170 +11,24 @@
 #include "net.h"
 #include "miner.h"
 
+#ifdef USE_OPENSC
+#include "smartcard.h"
+#endif
+
 #include <boost/thread.hpp>
 #include <stdio.h>
 #include <set>
 
 uint32_t nCvnNodeId = 0;
 
+CCriticalSection cs_mapChainAdmins;
+ChainAdminMapType mapChainAdmins;
+
 CCriticalSection cs_mapCVNs;
 CvnMapType mapCVNs;
 
 CCriticalSection cs_mapCvnSigs;
 CvnSigMapType mapCvnSigs;
-
-bool fSmartCardUnlocked = false;
-
-#ifdef USE_OPENSC
-#include "pkcs11/pkcs11.h"
-#include <secp256k1.h>
-
-extern "C" CK_RV C_UnloadModule(void *module);
-extern "C" void *C_LoadModule(const char *mspec, CK_FUNCTION_LIST_PTR_PTR funcs);
-static void *module = NULL;
-static CK_FUNCTION_LIST_PTR p11 = NULL;
-static CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
-static CK_OBJECT_HANDLE key = CK_INVALID_HANDLE;
-static CK_MECHANISM mech;
-static CPubKey smartCardPubKey;
-
-#if defined(WIN32)
-static std::string defaultPkcs11ModulePath = "";
-#elif defined(MAC_OSX)
-static std::string defaultPkcs11ModulePath = "";
-#else
-static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so";
-#endif
-
-static void cleanup_p11()
-{
-    if (p11)
-        p11->C_Finalize(NULL_PTR);
-    if (module)
-        C_UnloadModule(module);
-}
-
-unsigned char * getEC_POINT(CK_SESSION_HANDLE sess, CK_OBJECT_HANDLE obj, CK_ULONG_PTR pulCount)
-{
-    CK_ATTRIBUTE attr = { CKA_EC_POINT, NULL, 0 };
-    CK_RV rv;
-
-    rv = p11->C_GetAttributeValue(sess, obj, &attr, 1);
-    if (rv == CKR_OK) {
-        if (!(attr.pValue = calloc(1, attr.ulValueLen + 1))) {
-            LogPrintf("getEC_POINT: out of memory in getEC_PONIT\n");
-            return NULL;
-        }
-        rv = p11->C_GetAttributeValue(sess, obj, &attr, 1);
-        if (pulCount)
-            *pulCount = attr.ulValueLen;
-    } else {
-        LogPrintf("getEC_POINT: ERROR, C_GetAttributeValue %u\n", rv);
-    }
-    return (unsigned char *)attr.pValue;
-}
-
-static int find_object(CK_SESSION_HANDLE sess, CK_OBJECT_CLASS cls,
-        CK_OBJECT_HANDLE_PTR ret,
-        const unsigned char *id, size_t id_len, int obj_index)
-{
-    CK_ATTRIBUTE attrs[2];
-    unsigned int nattrs = 0;
-    CK_ULONG count;
-    CK_RV rv;
-    int i;
-
-    attrs[0].type = CKA_CLASS;
-    attrs[0].pValue = &cls;
-    attrs[0].ulValueLen = sizeof(cls);
-    nattrs++;
-    if (id) {
-        attrs[nattrs].type = CKA_ID;
-        attrs[nattrs].pValue = (void *) id;
-        attrs[nattrs].ulValueLen = id_len;
-        nattrs++;
-    }
-
-    rv = p11->C_FindObjectsInit(sess, attrs, nattrs);
-    if (rv != CKR_OK) {
-        std::cout << "C_FindObjectsInit" << std::endl;
-        goto done;
-    }
-
-    for (i = 0; i < obj_index; i++) {
-        rv = p11->C_FindObjects(sess, ret, 1, &count);
-        if (rv != CKR_OK) {
-            printf("C_FindObjects\n");
-            goto done;
-        }
-        if (count == 0)
-            goto done;
-    }
-    rv = p11->C_FindObjects(sess, ret, 1, &count);
-    if (rv != CKR_OK) {
-        printf("C_FindObjects\n");
-        goto done;
-    }
-
-done:
-    if (count == 0)
-        *ret = CK_INVALID_HANDLE;
-
-    p11->C_FindObjectsFinal(sess);
-
-    return count;
-}
-
-bool static CvnSignWithSmartCard(const uint256& hashUnsignedBlock, CCvnSignature& signature, const CCvnInfo& cvnInfo)
-{
-    CK_ULONG nSigLen = 64;
-    secp256k1_ecdsa_signature sig;
-
-    if (cvnInfo.vPubKey != smartCardPubKey) {
-        LogPrintf("CvnSignWithSmartCard : key does not match node ID\n  CVN pubkey: %s\n CARD pubkey: %s\n", HexStr(cvnInfo.vPubKey), HexStr(smartCardPubKey));
-        return false;
-    }
-
-    CK_RV rv = p11->C_SignInit(session, &mech, key);
-    if (rv != CKR_OK) {
-        LogPrintf("CvnSignWithSmartCard : ERROR, could not create signature with smart card(init): %08x\n", (unsigned int)rv);
-        return false;
-    }
-
-    rv =  p11->C_Sign(session,
-            (unsigned char*) hashUnsignedBlock.begin(), hashUnsignedBlock.size(),
-            (unsigned char*) &sig, &nSigLen);
-
-    if (rv != CKR_OK) {
-        LogPrintf("CvnSignWithSmartCard : ERROR, could not create signature with smart card: %08x\n", (unsigned int)rv);
-        return false;
-    }
-
-    std::reverse(sig.data, sig.data + 32);
-    std::reverse(&sig.data[32], &sig.data[32] + 32);
-
-    size_t nSigLenDER = 72;
-    signature.vSignature.resize(72);
-
-    secp256k1_context* tmp_secp256k1_context_sign = NULL;
-    secp256k1_ecdsa_signature_serialize_der(tmp_secp256k1_context_sign, &signature.vSignature[0], &nSigLenDER, &sig);
-
-    signature.vSignature.resize(nSigLenDER);
-
-    if (!CvnVerifySignature(hashUnsignedBlock, signature)) {
-        LogPrintf("CvnSignWithSmartCard : ERROR: created invalid signature\n");
-        return false;
-    }
-
-    LogPrintf("CvnSignWithSmartCard : OK\n  Hash: %s\n  node: 0x%08x\n  pubk: %s\n   sig: %s\n",
-            hashUnsignedBlock.ToString(), signature.nSignerId,
-            HexStr(cvnInfo.vPubKey),
-            HexStr(signature.vSignature));
-
-    return true;
-}
-
-#endif // USE_OPENSC
 
 bool static CvnSignWithKey(const uint256& hashUnsignedBlock, const std::string strCvnPrivKey, CCvnSignature& signature, const CCvnInfo& cvnInfo)
 {
@@ -202,34 +56,37 @@ bool static CvnSignWithKey(const uint256& hashUnsignedBlock, const std::string s
         return false;
     }
 
+#if POC_DEBUG
     LogPrintf("CvnSignWithKey : OK\n  Hash: %s\n  node: 0x%08x\n  pubk: %s\n   sig: %s\n",
             hashUnsignedBlock.ToString(), signature.nSignerId,
             HexStr(cvnInfo.vPubKey),
             HexStr(signature.vSignature));
-
+#endif
     return true;
 }
 
-bool CvnSign(const uint256& hashBlock, CCvnSignature& signature, const uint32_t& nNodeId)
+static bool CvnSignRaw(const uint256& hashToSign, CCvnSignature& signature, const uint32_t& nNodeId)
 {
     if (!nNodeId) {
-        LogPrint("cvn", "CvnSign : CVN node not initialized\n");
+        LogPrintf("CvnSign : CVN node not initialized\n");
+        return false;
+    }
+
+    if (!mapCVNs.count(nNodeId)) {
+        LogPrintf("CvnSign : could not find CvnInfo for signer ID 0x%08x\n", nNodeId);
         return false;
     }
 
     signature.nSignerId = nNodeId;
-
-    CvnMapType::iterator it = mapCVNs.find(signature.nSignerId);
-    if (it == mapCVNs.end()) {
-        LogPrintf("CvnSign : could not find CvnInfo for signer ID 0x%08x\n", signature.nSignerId);
-        return false;
-    }
+    CCvnInfo cvnInfo = mapCVNs[nNodeId];
 
     if (GetBoolArg("-usesmartcard", false)) {
 #ifdef USE_OPENSC
-        if (!fSmartCardUnlocked)
+        if (!fSmartCardUnlocked) {
             LogPrint("cvn", "SignBlock : ERROR, smart card not unlocked. Make sure that -cvnpin, -cvnslot and -cvnkeyid are set correctly\n");
-        return CvnSignWithSmartCard(hashBlock, signature, it->second);
+            return false;
+        }
+        return CvnSignWithSmartCard(hashToSign, signature, cvnInfo);
 #else
         LogPrintf("CvnSign : ERROR, this wallet was not compiled with smart card support\n");
         return false;
@@ -242,10 +99,29 @@ bool CvnSign(const uint256& hashBlock, CCvnSignature& signature, const uint32_t&
             return false;
         }
 
-        return CvnSignWithKey(hashBlock, strCvnPrivKey, signature, it->second);
+        return CvnSignWithKey(hashToSign, strCvnPrivKey, signature, cvnInfo);
     }
 
     return false;
+}
+
+bool CvnSign(const uint256& hashBlock, CCvnSignature& signature, const uint32_t& nNextCreator, const uint32_t& nNodeId)
+{
+    CHashWriter hasher(SER_GETHASH, 0);
+    hasher << hashBlock << nNextCreator << nNodeId;
+
+    return CvnSignRaw(hasher.GetHash(), signature, nNodeId);
+}
+
+bool CvnSignBlock(CBlock& block)
+{
+    CCvnSignature signature;
+    if (!CvnSignRaw(block.GetHash(), signature, block.nCreatorId)) {
+        return false;
+    }
+
+    block.vCreatorSignature = signature.vSignature;
+    return true;
 }
 
 bool CvnVerifySignature(const uint256 &hash, const CCvnSignature &sig)
@@ -335,11 +211,9 @@ void SendCVNSignature(const CBlockIndex *pindexNew)
     }
 
     uint256 hashPrevBlock = pindexNew->GetBlockHash();
-    CHashWriter hasher(SER_GETHASH, 0);
-    hasher << hashPrevBlock << nNextCreator << nCvnNodeId;
 
     CCvnSignature signature;
-    if (!CvnSign(hasher.GetHash(), signature, nCvnNodeId)) {
+    if (!CvnSign(pindexNew->GetBlockHash(), signature, nNextCreator, nCvnNodeId)) {
         LogPrintf("SendCVNSignature : could not sign block\n");
         return;
     }
@@ -365,6 +239,13 @@ void PrintAllCVNs()
     }
 }
 
+void PrintAllChainAdmins()
+{
+    BOOST_FOREACH(const ChainAdminMapType::value_type& adm, mapChainAdmins) {
+        LogPrintf("%s\n", adm.second.ToString());
+    }
+}
+
 void UpdateCvnInfo(const CBlock* pblock)
 {
     LogPrint("cvn", "UpdateCvnInfo : updating CVN data\n");
@@ -383,6 +264,26 @@ void UpdateCvnInfo(const CBlock* pblock)
     }
 
     //PrintAllCVNs();
+}
+
+void UpdateChainAdmins(const CBlock* pblock)
+{
+    LogPrint("cvn", "UpdateChainAdmins : updating chain admins\n");
+
+    if (!pblock->HasChainAdmins()) {
+        LogPrintf("UpdateChainAdmins : ERROR, block has no CHAIN_ADMINS_PAYLOAD\n");
+        return;
+    }
+
+    LOCK(cs_mapChainAdmins);
+
+    mapChainAdmins.clear();
+
+    BOOST_FOREACH(CChainAdmin admin, pblock->vChainAdmins) {
+        mapChainAdmins.insert(std::make_pair(admin.nAdminId, admin));
+    }
+
+    //PrintAllChainAdmins();
 }
 
 bool CheckDynamicChainParameters(const CDynamicChainParams& params)
@@ -417,6 +318,7 @@ void UpdateChainParameters(const CBlock* pblock)
     CheckDynamicChainParameters(pblock->dynamicChainParams);
 
     dynParams.nBlockSpacing              = pblock->dynamicChainParams.nBlockSpacing;
+    dynParams.nBlockSpacingGracePeriod   = pblock->dynamicChainParams.nBlockSpacingGracePeriod;
     dynParams.nDustThreshold             = pblock->dynamicChainParams.nDustThreshold;
     dynParams.nMaxCvnSigners             = pblock->dynamicChainParams.nMaxCvnSigners;
     dynParams.nMinCvnSigners             = pblock->dynamicChainParams.nMinCvnSigners;
@@ -435,8 +337,8 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
             return error("signature is invalid: %s", signature.ToString());
     }
 
-    if (!mapBlockIndex.count(block.hashPrevBlock))
-        return error("block hash no hashPrevBlock: %s", block.GetHash().ToString());
+    if (!mapBlockIndex.count(block.hashPrevBlock) && hashBlock != params.hashGenesisBlock)
+        return error("block has no hashPrevBlock: %s", block.GetHash().ToString());
 
     uint32_t nBlockCreator = (hashBlock == params.hashGenesisBlock) ?
             block.nCreatorId :
@@ -448,8 +350,8 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
     if (nBlockCreator != block.nCreatorId)
         return error("block %s can not be created by %u but by %u", hashBlock.ToString(), block.nCreatorId);
 
-    LogPrint("cvn", "CheckProofOfCooperation : checked %u signatures of block %d %s by 0x%08x\n",
-            block.vSignatures.size(), block.nHeight, hashBlock.ToString(), block.nCreatorId);
+    LogPrint("cvn", "CheckProofOfCooperation : checked %u signatures of block %s created by 0x%08x\n",
+            block.vSignatures.size(), hashBlock.ToString(), block.nCreatorId);
 
     return true;
 }
@@ -467,93 +369,157 @@ bool CheckForDuplicateCvns(const CBlock& block)
     return true;
 }
 
-#ifdef USE_OPENSC
-void static InitSmartCard()
+bool CheckForDuplicateChainAdmins(const CBlock& block)
 {
-    CK_OBJECT_HANDLE tmpPubKey = CK_INVALID_HANDLE;
-    CK_BYTE opt_object_id[1];
-    CK_RV rv;
+    std::set<uint32_t> sNodeIds;
 
-    std::string pkcs11module = GetArg("-pkcs11module", defaultPkcs11ModulePath);
-    static const char * opt_module = pkcs11module.c_str();
+    BOOST_FOREACH(const CChainAdmin &adm, block.vChainAdmins)
+    {
+        if (!sNodeIds.insert(adm.nAdminId).second)
+            return error("detected duplicate chain admin Id: 0x%08x", adm.nAdminId);
+    };
 
-    module = C_LoadModule(opt_module, &p11);
-    if (module == NULL) {
-        LogPrintf("Failed to load pkcs11 module\n");
-        return;
-    }
-
-    rv = p11->C_Initialize(NULL);
-    if (rv == CKR_CRYPTOKI_ALREADY_INITIALIZED) {
-        LogPrintf("library has already been initialized\n");
-    } else if (rv != CKR_OK) {
-        LogPrintf("error initializing pkcs11 framework\n");
-        return;
-    }
-
-    LogPrintf("OpenSC successfully initialized using pkcs11 module at %s\n", opt_module);
-
-    rv = p11->C_OpenSession(GetArg("-cvnslot", 0), CKF_SERIAL_SESSION | CKF_RW_SESSION, NULL, NULL, &session);
-    if (rv != CKR_OK) {
-        LogPrintf("ERROR: could not open session: %04x\n", (unsigned int)rv);
-        cleanup_p11();
-        return;
-    }
-
-    rv = p11->C_Login(session, CKU_USER,(CK_UTF8CHAR *) GetArg("-cvnpin", "").c_str(), 6);
-    if (rv != CKR_OK) {
-        LogPrintf("ERROR: could not log into card (is the supplied pin correct?)\n");
-        cleanup_p11();
-        return;
-    }
-
-    opt_object_id[0] = GetArg("-cvnkeyid", 1);
-    if (find_object(session, CKO_PRIVATE_KEY, &key, opt_object_id, 1, 0) != 1){
-        LogPrintf("ERROR: Private key not found on card (is the -cvnkeyid correct?)\n");
-        cleanup_p11();
-        return;
-    }
-
-    if (find_object(session, CKO_PUBLIC_KEY, &tmpPubKey, opt_object_id, 1, 0) != 1){
-        LogPrintf("ERROR: Public key not found on card (is the -cvnkeyid correct?)\n");
-        cleanup_p11();
-        return;
-    }
-
-    CK_ULONG nPubKeySize;
-    unsigned char *pPubKey = getEC_POINT(session, tmpPubKey, &nPubKeySize);
-
-    if (!pPubKey) {
-        LogPrintf("ERROR: Public key not found on card (is the -cvnkeyid correct?)\n");
-        cleanup_p11();
-        return;
-    }
-
-    smartCardPubKey.Set(&pPubKey[2], pPubKey + nPubKeySize);
-    free(pPubKey);
-
-    memset(&mech, 0, sizeof(mech));
-    mech.mechanism = CKM_ECDSA;
-    fSmartCardUnlocked = true;
-
-    LogPrintf("Successfully logged into smart card\n");
+    return true;
 }
-#endif //USE_OPENSC
+
+static uint32_t FindNewlyAddedCVN()
+{
+    return 0;
+}
+
+static uint32_t FindCandidateOffset(const uint64_t nPrevBlockTime, const int64_t nTimeToTest)
+{
+    int nOverdue = nTimeToTest - nPrevBlockTime - dynParams.nBlockSpacing;
+
+    if (nOverdue < (int)dynParams.nBlockSpacingGracePeriod)
+        return 0;
+
+    return nOverdue / dynParams.nBlockSpacingGracePeriod;
+}
+
+typedef boost::unordered_set<uint32_t> TimeWeightSetType;
+typedef std::vector<uint32_t>::reverse_iterator CandidateIterator;
+
+static void AddToSigSets(std::vector<TimeWeightSetType>& vLastSignatures, const std::vector<CCvnSignature>& vSignatures)
+{
+    TimeWeightSetType signers;
+
+    BOOST_FOREACH(const CCvnSignature& sig, vSignatures) {
+        signers.insert(sig.nSignerId);
+    }
+
+    vLastSignatures.push_back(signers);
+}
+
+static bool HasSignedLastBlocks(const std::vector<TimeWeightSetType>& vLastSignatures, const uint32_t& nCreatorCandidate, const uint32_t& nMinSuccessiveSignatures)
+{
+    uint32_t nSignatures = 0;
+
+    BOOST_FOREACH(const TimeWeightSetType& signers, vLastSignatures) {
+        if (signers.count(nCreatorCandidate)) {
+            nSignatures++;
+        } else {
+            if (nSignatures < nMinSuccessiveSignatures)
+                return false;
+        }
+    }
+
+    return (nSignatures >= nMinSuccessiveSignatures);
+}
+
+#if 0
+static const string CreateSignerIdList(const std::vector<CCvnSignature>& vSignatures)
+{
+    std::stringstream s;
+
+    BOOST_FOREACH(const CCvnSignature& sig, vSignatures) {
+        s << strprintf("%s%08x", (s.tellp() > 0) ? "," : "", sig.nSignerId);
+    }
+
+    return s.str();
+}
+#endif
+
+/**
+ * The rules are as follows:
+ * 1. If there is any newly added CVN it is its turn
+ * 1. Find the node with the highest time-weight. That's the
+ *    node that created its last block the furthest in the past.
+ * 2. It must have co-signed the last nCreatorMinSignatures blocks
+ *    to proof it's cooperation.
+ */
+uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTimeToTest)
+{
+    uint32_t nNextCreatorId = FindNewlyAddedCVN();
+
+    if (nNextCreatorId)
+        return nNextCreatorId;
+
+    TimeWeightSetType sCheckedNodes;
+    sCheckedNodes.reserve(mapCVNs.size());
+    std::vector<uint32_t> vCreatorCandidates;
+    std::vector<TimeWeightSetType> vLastSignatures;
+    uint32_t nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures;
+
+    // first create a list of creator candidates
+    for (const CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev) {
+        if (!(pindex->nVersion & CBlock::TX_PAYLOAD)) // we only consider blocks with transactions
+            continue;
+
+        if (sCheckedNodes.insert(pindex->nCreatorId).second)
+            vCreatorCandidates.push_back(pindex->nCreatorId);
+
+        if (nMinSuccessiveSignatures) {
+            nMinSuccessiveSignatures--;
+            AddToSigSets(vLastSignatures, pindex->vSignatures);
+        }
+    }
+    nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures; // reset
+
+    // the last in the list has the highest time-weight
+    CandidateIterator itCandidates = vCreatorCandidates.rbegin();
+
+    if (!vCreatorCandidates.size()) {
+        LogPrintf("CheckNextBlockCreator : ERROR, could not find any creator node candidates\n");
+        return 0;
+    }
+
+    uint32_t nCandidateOffset = FindCandidateOffset(pindexStart->nTime, nTimeToTest);
+    if (nCandidateOffset > vCreatorCandidates.size()) {
+        LogPrintf("CheckNextBlockCreator : WARN, CandidateOffset exceeds limits: %u > %u\n", nCandidateOffset, vCreatorCandidates.size());
+        nCandidateOffset = vCreatorCandidates.size() - 1;
+    }
+
+    do {
+        uint32_t nCreatorCandidate = *(itCandidates += nCandidateOffset);
+
+        // check if the candidate signed the last nMinSuccessiveSignatures blocks
+        if (HasSignedLastBlocks(vLastSignatures, nCreatorCandidate, nMinSuccessiveSignatures)) {
+            nNextCreatorId = nCreatorCandidate;
+            break;
+        }
+
+        // if we did not find a candidate who signed enough successive blocks we lower
+        // our requirement to avoid the block chain become stalled
+        if (itCandidates == vCreatorCandidates.rend()) {
+            nMinSuccessiveSignatures--;
+            LogPrintf("CheckNextBlockCreator: WARNING, could not find a CVN that signed enough successive blocks. Lowering number of required sigs to %u\n", nMinSuccessiveSignatures);
+        }
+    } while(nMinSuccessiveSignatures);
+
+    if (nNextCreatorId)
+        LogPrintf("NODE ID 0x%08x should create the next block #%u\n", nNextCreatorId, pindexStart->nHeight + 1);
+    else
+        LogPrintf("ERROR, could not find any Node ID that should create the next block #%u\n", pindexStart->nHeight + 1);
+
+    return nNextCreatorId;
+}
 
 void static CCVNSignerThread(const CChainParams& chainparams, const uint32_t& nNodeId)
 {
     LogPrintf("CVN signer thread started for node ID 0x%08x\n", nNodeId);
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
     RenameThread("CVN-signer");
-
-#ifdef USE_OPENSC
-    if (GetBoolArg("-usesmartcard", false))
-        InitSmartCard();
-    else
-        fSmartCardUnlocked = true;
-#else
-    fSmartCardUnlocked = true;
-#endif
 
     try {
         /* Get
@@ -562,8 +528,8 @@ void static CCVNSignerThread(const CChainParams& chainparams, const uint32_t& nN
         while (true) {
             MilliSleep(2000000000);
 
-            int64_t adjustedTime = GetAdjustedTime();
-            int64_t lastBlockTime = pindexBestHeader->GetBlockTime();
+//            int64_t adjustedTime = GetAdjustedTime();
+//            int64_t lastBlockTime = pindexBestHeader->GetBlockTime();
 
 //            if ((int64_t)(lastBlockTime + chainparams.BlockSpacing() - 10) > adjustedTime)
 //                continue;
@@ -572,8 +538,8 @@ void static CCVNSignerThread(const CChainParams& chainparams, const uint32_t& nN
 
             // find the node with the highest time weight
             CBlockIndex *pBlockIndex = chainActive.Tip();
-            int nBlockCount = 1;
-            unsigned int nCreatorId = pBlockIndex->nCreatorId;
+            //int nBlockCount = 1;
+            //uint32_t nCreatorId = pBlockIndex->nCreatorId;
 
             do
             {

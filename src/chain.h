@@ -184,7 +184,6 @@ public:
         nTime          = block.nTime;
         nCreatorId     = block.nCreatorId;
         vSignatures    = block.vSignatures;
-        nHeight        = block.nHeight;
     }
 
     CDiskBlockPos GetBlockPos() const {
@@ -215,7 +214,6 @@ public:
         block.nTime          = nTime;
         block.nCreatorId     = nCreatorId;
         block.vSignatures    = vSignatures;
-        block.nHeight        = nHeight;
         return block;
     }
 
@@ -334,7 +332,6 @@ public:
         block.nTime           = nTime;
         block.nCreatorId      = nCreatorId;
         block.vSignatures     = vSignatures;
-        block.nHeight         = nHeight;
         return block.GetHash();
     }
 
