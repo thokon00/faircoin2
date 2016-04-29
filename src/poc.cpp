@@ -491,7 +491,9 @@ static uint32_t FindNewlyAddedCVN(const CBlockIndex* pindexStart)
                 if (cvn.nHeightAdded == (uint32_t)pindex->nHeight) {
                     nLatestAdded = cvn.nNodeId;
                     pindexFound = pindex;
+#if POC_DEBUG
                     LogPrintf("last added CVN: 0x%08x at height: %u\n%s\n", nLatestAdded, pindex->nHeight, cvn.ToString());
+#endif
                     break;
                 }
             };
