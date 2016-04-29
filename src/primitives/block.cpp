@@ -53,13 +53,13 @@ std::string CBlock::ToString() const
     if (HasTx())
         payload << "tx";
     if (HasCvnInfo())
-        payload << strprintf("%scvninfo", (payload.tellp() > 0) ? "," : "");
+        payload << strprintf("%scvninfo", (payload.tellp() > 0) ? "|" : "");
     if (HasChainParameters())
-        payload << strprintf("%sparams", (payload.tellp() > 0) ? "," : "");
+        payload << strprintf("%sparams", (payload.tellp() > 0) ? "|" : "");
     if (HasChainAdmins())
-        payload << strprintf("%sadmins", (payload.tellp() > 0) ? "," : "");
+        payload << strprintf("%sadmins", (payload.tellp() > 0) ? "|" : "");
 
-    s << strprintf("CBlock(hash=%s, ver=%d, payload=%s, hashPrevBlock=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=%u, signatures=%u, vtx=%u)\n",
+    s << strprintf("CBlock(hash=%s, ver=%d, payload=%s, hashPrevBlock=%s, hashMerkleRoot=%s, nTime=%u, nCreatorId=0x%08x, signatures=%u, vtx=%u)\n",
         GetHash().ToString(),
         nVersion & 0xff, payload.str(),
         hashPrevBlock.ToString(),

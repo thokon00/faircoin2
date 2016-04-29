@@ -422,7 +422,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                 LOCK(cs_mapCvnSigs);
                 uint256 hashTip = chainActive.Tip()->GetBlockHash();
                 CvnSigEntryType& sigsForHashPrev = mapCvnSigs[hashTip];
-#if 0
+#if POC_DEBUG
                 LogPrintf("list of tips in sig map\n");
                 BOOST_FOREACH(CvnSigMapType::value_type& map4hash, mapCvnSigs) {
                     LogPrintf("  %s\n", map4hash.first.ToString());
@@ -469,6 +469,12 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                 if (mapCvnSigs.count(hashBlock)) {
                     CvnSigEntryType sigsForHashPrev = mapCvnSigs[hashBlock];
                     LogPrintf("# of sig available: %u (total: %u)\n  hash: %s\n", sigsForHashPrev.size(), mapCvnSigs.size(), hashBlock.ToString());
+
+                    if (sigsForHashPrev.empty()) {
+                        LogPrintf("ERROR: no signatures found. Can not create block\n");
+                        continue;
+                    }
+
                     BOOST_FOREACH(CvnSigEntryType::value_type& cvn, sigsForHashPrev)
                     {
                         if (!CvnValidateSignature(cvn.second, pblock->hashPrevBlock, nNodeId))

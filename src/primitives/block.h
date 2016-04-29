@@ -53,9 +53,7 @@ public:
         READWRITE(nTime);
         READWRITE(nCreatorId);
         READWRITE(vSignatures);
-
-        if (this->nVersion & ADMIN_PAYLOAD_MASK)
-            READWRITE(vAdminSignatures);
+        READWRITE(vAdminSignatures);
     }
 
     void SetNull()

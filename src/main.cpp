@@ -1381,7 +1381,7 @@ arith_uint256 GetBlockProof(const CBlockIndex& block)
 {
     arith_uint256 bnSignatures;
 
-    bnSignatures = block.vSignatures.size();
+    bnSignatures = block.vSignatures.size() + block.vAdminSignatures.size() * 10; // admin sigs count 10 fold
 
     return bnSignatures;
 }
@@ -3469,7 +3469,9 @@ bool static LoadBlockIndexDB()
     {
         CBlockIndex* pindex = item.second;
         pindex->nChainWork = (pindex->pprev ? pindex->pprev->nChainWork : 0) + GetBlockProof(*pindex);
-        LogPrintf("LoadBlockIndexDB : nHeight: %u, nChainwork: %s, nStatus: %u\n", pindex->nHeight, pindex->nChainWork.ToString(), pindex->nStatus);
+        LogPrintf("LoadBlockIndexDB : nVersion: 0x%08x, nHeight: %u, nChainwork: %s, nStatus: %u, blockHash: %s, sigs: %u, adminSigs: %u\n",
+                pindex->nVersion, pindex->nHeight, pindex->nChainWork.ToString(), pindex->nStatus, pindex->GetBlockHash().ToString(),
+                pindex->vSignatures.size(), pindex->vAdminSignatures.size());
         // We can link the chain of blocks for which we've received transactions at some point.
         // Pruned nodes may have deleted the block.
 
@@ -4768,7 +4770,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         }
 
         // we must use CBlocks, as CBlockHeaders won't include the 0x00 nTx count at the end
-        vector<CBlock> vHeaders;
+        vector<CBlockHeader> vHeaders;
         int nLimit = MAX_HEADERS_RESULTS;
         LogPrint("net", "getheaders %d to %s from peer=%d\n", (pindex ? pindex->nHeight : -1), hashStop.ToString(), pfrom->id);
         for (; pindex; pindex = chainActive.Next(pindex))
@@ -5041,7 +5043,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         headers.resize(nCount);
         for (unsigned int n = 0; n < nCount; n++) {
             vRecv >> headers[n];
-            ReadCompactSize(vRecv); // ignore tx count; assume it is 0.
+            //ReadCompactSize(vRecv); // ignore tx count; assume it is 0.
         }
 
         LOCK(cs_main);
@@ -5659,7 +5661,7 @@ bool SendMessages(CNode* pto)
             // blocks, or if the peer doesn't want headers, just
             // add all to the inv queue.
             LOCK(pto->cs_inventory);
-            vector<CBlock> vHeaders;
+            vector<CBlockHeader> vHeaders;
             bool fRevertToInv = (!state.fPreferHeaders || pto->vBlockHashesToAnnounce.size() > MAX_BLOCKS_TO_ANNOUNCE);
             CBlockIndex *pBestIndex = NULL; // last header queued for delivery
             ProcessBlockAvailability(pto->id); // ensure pindexBestKnownBlock is up-to-date

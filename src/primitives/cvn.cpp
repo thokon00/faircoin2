@@ -34,7 +34,7 @@ uint256 CCvnSignatureMsg::GetHash() const
 std::string CCvnSignature::ToString() const
 {
     std::stringstream s;
-    s << strprintf("CCvnSignature(signerId=%u, ver=%d, sig=%s)",
+    s << strprintf("CCvnSignature(signerId=0x%08x, ver=%d, sig=%s)",
         nSignerId,
         nVersion,
         HexStr(vSignature)); //TODO: limit again .substr(0, 30));
@@ -44,7 +44,7 @@ std::string CCvnSignature::ToString() const
 std::string CCvnInfo::ToString() const
 {
     std::stringstream s;
-    s << strprintf("CCvnInfo(nodeId=%u, heightAdded=%u, pubkey=%s)",
+    s << strprintf("CCvnInfo(nodeId=0x%08x, heightAdded=%u, pubkey=%s)",
         nNodeId, nHeightAdded,
         HexStr(vPubKey));
     return s.str();
@@ -53,7 +53,7 @@ std::string CCvnInfo::ToString() const
 std::string CChainAdmin::ToString() const
 {
     std::stringstream s;
-    s << strprintf("CChainAdmin(adminId=%u, pubkey=%s)",
+    s << strprintf("CChainAdmin(adminId=0x%08x, pubkey=%s)",
         nAdminId,
         HexStr(vPubKey));
     return s.str();

@@ -144,6 +144,7 @@ public:
     unsigned int nTime;
     unsigned int nCreatorId;
     std::vector<CCvnSignature> vSignatures;
+    std::vector<CCvnSignature> vAdminSignatures;
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     uint32_t nSequenceId;
@@ -168,6 +169,7 @@ public:
         nTime          = 0;
         nCreatorId     = 0;
         vSignatures.clear();
+        vAdminSignatures.clear();
     }
 
     CBlockIndex()
@@ -179,11 +181,12 @@ public:
     {
         SetNull();
 
-        nVersion       = block.nVersion;
-        hashMerkleRoot = block.hashMerkleRoot;
-        nTime          = block.nTime;
-        nCreatorId     = block.nCreatorId;
-        vSignatures    = block.vSignatures;
+        nVersion         = block.nVersion;
+        hashMerkleRoot   = block.hashMerkleRoot;
+        nTime            = block.nTime;
+        nCreatorId       = block.nCreatorId;
+        vSignatures      = block.vSignatures;
+        vAdminSignatures = block.vAdminSignatures;
     }
 
     CDiskBlockPos GetBlockPos() const {
@@ -207,13 +210,14 @@ public:
     CBlockHeader GetBlockHeader() const
     {
         CBlockHeader block;
-        block.nVersion       = nVersion;
+        block.nVersion         = nVersion;
         if (pprev)
             block.hashPrevBlock = pprev->GetBlockHash();
-        block.hashMerkleRoot = hashMerkleRoot;
-        block.nTime          = nTime;
-        block.nCreatorId     = nCreatorId;
-        block.vSignatures    = vSignatures;
+        block.hashMerkleRoot   = hashMerkleRoot;
+        block.nTime            = nTime;
+        block.nCreatorId       = nCreatorId;
+        block.vSignatures      = vSignatures;
+        block.vAdminSignatures = vAdminSignatures;
         return block;
     }
 
@@ -245,11 +249,12 @@ public:
 
     std::string ToString() const
     {
-        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, merkle=%s, hashBlock=%s, creatorId=%u, signatures=%u)",
+        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, nCreatorId=%u, merkle=%s, hashBlock=%s, signatures=%u, adminSignatures=%u)",
             pprev, nHeight, nCreatorId,
             hashMerkleRoot.ToString(),
             GetBlockHash().ToString(),
-            vSignatures.size());
+            vSignatures.size(),
+			vAdminSignatures.size());
     }
 
     //! Check whether this block index entry is valid up to the passed validity level.
@@ -321,17 +326,19 @@ public:
         READWRITE(nTime);
         READWRITE(nCreatorId);
         READWRITE(vSignatures);
+        READWRITE(vAdminSignatures);
     }
 
     uint256 GetBlockHash() const
     {
         CBlockHeader block;
-        block.nVersion        = nVersion;
-        block.hashPrevBlock   = hashPrev;
-        block.hashMerkleRoot  = hashMerkleRoot;
-        block.nTime           = nTime;
-        block.nCreatorId      = nCreatorId;
-        block.vSignatures     = vSignatures;
+        block.nVersion         = nVersion;
+        block.hashPrevBlock    = hashPrev;
+        block.hashMerkleRoot   = hashMerkleRoot;
+        block.nTime            = nTime;
+        block.nCreatorId       = nCreatorId;
+        block.vSignatures      = vSignatures;
+        block.vAdminSignatures = vAdminSignatures;
         return block.GetHash();
     }
 
