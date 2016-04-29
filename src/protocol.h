@@ -234,6 +234,11 @@ extern const char *GETSIGLIST;
  */
 extern const char *SIGLIST;
 
+/**
+ * The chaindata sends chain data that a chain admin compiled
+ */
+extern const char *CHAINDATA;
+
 };
 
 /* Get a vector of all valid message types (see above) */
@@ -332,6 +337,7 @@ enum {
     // MSG_FILTERED_BLOCK should not appear in any invs except as a part of getdata.
     MSG_FILTERED_BLOCK,
     MSG_CVN_SIGNATURE,
+    MSG_POC_CHAIN_DATA,
 };
 
 #endif // BITCOIN_PROTOCOL_H

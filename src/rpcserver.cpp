@@ -305,7 +305,7 @@ static const CRPCCommand vRPCCommands[] =
     { "util",               "verifymessage",          &verifymessage,          true  },
     { "util",               "addcvn",                 &addcvn,                 true  },
     { "util",               "removecvn",              &removecvn,              true  },
-    { "util",               "signblock",              &signblock,              true  },
+    { "util",               "signchaindata",          &signchaindata,          true  },
 
     /* Not shown in help */
     { "hidden",             "setmocktime",            &setmocktime,            true  },

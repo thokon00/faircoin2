@@ -108,7 +108,7 @@ public:
         CCvnSignature genesisSignature(GENESIS_NODE_ID, ParseHex("304402202aa6c9fd6c06542a1b175f33c3c8c4aef155d6180711e3ba30be250eb90ef03602201a459ff70f729630c5dd47ef601efa3847ee24073f8f3d9a4068e74c6da232cd"));
         genesis.vSignatures.push_back(genesisSignature); // genesis signature
 
-        genesis.vCreatorSignature = ParseHex("30440220422381f6131ca21cff20bb5b8e7bc5974bd84883ad087b117a7e10d9310526dc0220358ce4433c79b167d3016084b11ad7b19e91de83952ee336790693fcf3599353");
+        genesis.vCreatorSignature = ParseHex("304402201978eea0b7b2afef343816fa950f1b71b6d973ec445e681711031a97d8307163022035d07005eb3b494aa59119ed3b4e7201b0d3a1c4cfb49e0c66421f0dd04d733e");
 
         consensus.hashGenesisBlock = genesis.GetHash();
         printf("genesis block main net:\n%s\n", genesis.ToString().c_str());
@@ -119,8 +119,8 @@ public:
                 genesis.hashMerkleRoot.ToString().c_str());
 #else
         // also update checkpoints!
-        assert(consensus.hashGenesisBlock == uint256S("0420b6c4f86c905d72d6af018b364d35a250dd972abf02649bad6912c8c1c423"));
-        assert(genesis.hashMerkleRoot == uint256S("6105fa77f78df2201224dbe29212d5a91eb1eec42b750acf7071c56d1880e416"));
+        assert(consensus.hashGenesisBlock == uint256S("49443ff1f4876f972e130e19c0969794aefd7aeb57ec65cdda386eea22a36cb2"));
+        assert(genesis.hashMerkleRoot == uint256S("001531cd44761fe51d4eb3b93e8bcd29cdffa2bbedc2701f086a4f987a3deb71"));
 #endif
         vSeeds.push_back(CDNSSeedData("1.fair-coin.org", "faircoin2-seed1.fair-coin.org")); // Thomas König
         vSeeds.push_back(CDNSSeedData("2.fair-coin.org", "faircoin2-seed2.fair-coin.org")); // Thomas König
@@ -141,7 +141,7 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            ( 0, uint256S("0420b6c4f86c905d72d6af018b364d35a250dd972abf02649bad6912c8c1c423")),
+            ( 0, uint256S("49443ff1f4876f972e130e19c0969794aefd7aeb57ec65cdda386eea22a36cb2")),
             1461766275, // * UNIX timestamp of last checkpoint block
             0,   // * total number of transactions between genesis and last checkpoint
                         //   (the tx=... number in the SetBestChain debug.log lines)
@@ -196,8 +196,8 @@ public:
                 consensus.hashGenesisBlock.ToString().c_str(),
                 genesis.hashMerkleRoot.ToString().c_str());
 #else
-        assert(consensus.hashGenesisBlock == uint256S("67bbbc05544bd3b02451ecdeba70c81b6807daf07269e8f950c2dd2ad572217b"));
-        assert(genesis.hashMerkleRoot == uint256S("12213e911d6bc64acee32f5ec135e278ad8312c813bb7969728fbca9c17fc617"));
+        assert(consensus.hashGenesisBlock == uint256S("fac71114e0630bb4c8722144ea843fcc8b465ac77820e86251d37141bd3da26e"));
+        assert(genesis.hashMerkleRoot == uint256S("001531cd44761fe51d4eb3b93e8bcd29cdffa2bbedc2701f086a4f987a3deb71"));
 #endif
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -220,7 +220,7 @@ public:
 
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
-            ( 0, uint256S("67bbbc05544bd3b02451ecdeba70c81b6807daf07269e8f950c2dd2ad572217b")),
+            ( 0, uint256S("fac71114e0630bb4c8722144ea843fcc8b465ac77820e86251d37141bd3da26e")),
             1461766275,
             1488,
             300
@@ -276,8 +276,8 @@ public:
                 consensus.hashGenesisBlock.ToString().c_str(),
                 genesis.hashMerkleRoot.ToString().c_str());
 #else
-        assert(consensus.hashGenesisBlock == uint256S("14d94ab89f3708e9b7d0c5943e5e1da3ff58453a1d9827146580f7657d6dbf1e"));
-        assert(genesis.hashMerkleRoot == uint256S("c30949a5d8f7d9a405158e0e47be8035d93b47abb4a29776a0ce4799e7f94d04"));
+        assert(consensus.hashGenesisBlock == uint256S("fac71114e0630bb4c8722144ea843fcc8b465ac77820e86251d37141bd3da26e"));
+        assert(genesis.hashMerkleRoot == uint256S("001531cd44761fe51d4eb3b93e8bcd29cdffa2bbedc2701f086a4f987a3deb71"));
 #endif
         vFixedSeeds.clear(); //! Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();  //! Regtest mode doesn't have any DNS seeds.
@@ -290,7 +290,7 @@ public:
 
         checkpointData = (CCheckpointData){
             boost::assign::map_list_of
-            ( 0, uint256S("14d94ab89f3708e9b7d0c5943e5e1da3ff58453a1d9827146580f7657d6dbf1e")),
+            ( 0, uint256S("fac71114e0630bb4c8722144ea843fcc8b465ac77820e86251d37141bd3da26e")),
             1461766275,
             0,
             0

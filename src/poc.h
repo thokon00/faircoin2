@@ -17,8 +17,11 @@
 
 typedef std::map<uint32_t, CCvnInfo> CvnMapType;
 typedef std::map<uint32_t, CChainAdmin> ChainAdminMapType;
+
 typedef std::map<uint32_t, CCvnSignature> CvnSigEntryType;
 typedef std::map<uint256, CvnSigEntryType> CvnSigMapType;
+
+typedef std::map<uint256, CChainDataMsg> ChainDataMapType;
 
 #define MAX_BLOCK_SPACING 3600
 #define MIN_BLOCK_SPACING 30
@@ -35,15 +38,21 @@ extern CCriticalSection cs_mapChainAdmins;
 extern ChainAdminMapType mapChainAdmins;
 extern CCriticalSection cs_mapCvnSigs;
 extern CvnSigMapType mapCvnSigs;
+extern CCriticalSection cs_mapChainData;
+extern ChainDataMapType mapChainData;
 
 bool CvnSign(const uint256& hashUnsignedBlock, CCvnSignature& signature, const uint32_t& nNextCreator, const uint32_t& nNodeId);
 bool CvnSignBlock(CBlock& block);
 bool CvnVerifySignature(const uint256 &hash, const CCvnSignature &sig);
+bool CvnVerifyAdminSignature(const uint256 &hash, const CCvnSignature &sig);
 bool CheckForDuplicateCvns(const CBlock& block);
 bool CheckForDuplicateChainAdmins(const CBlock& block);
 void SendCVNSignature(const CBlockIndex *pindexNew);
 bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId);
+bool AddChainData(const CChainDataMsg& msg);
 bool CvnValidateSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId);
+bool CheckAdminSignatures(const uint256 hashAdminData, const vector<CCvnSignature> vAdminSignatures);
+void RelayChainData(const CChainDataMsg& msg);
 
 uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTimeToTest);
 

@@ -2930,6 +2930,9 @@ bool CheckBlock(const CBlock& block, CValidationState& state, bool fCheckPOW, bo
         CCvnSignature creatorSignature(block.nCreatorId, block.vCreatorSignature);
         if (!CvnVerifySignature(block.GetHash(), creatorSignature))
             return false;
+
+        if (block.HasAdminPayload() && !CheckAdminSignatures(block.GetChainAdminDataHash(), block.vAdminSignatures))
+            return false;
     }
 
     // Check the merkle root.
@@ -4643,7 +4646,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                     LogPrint("net", "getheaders (%d) %s to peer=%d\n", pindexBestHeader->nHeight, inv.hash.ToString(), pfrom->id);
                 }
             }
-            else if (inv.type == MSG_CVN_SIGNATURE) {
+            else if (inv.type == MSG_CVN_SIGNATURE || inv.type == MSG_POC_CHAIN_DATA) {
                 if (!fAlreadyHave && !fImporting && !fReindex)
                     pfrom->AskFor(inv);
             }
@@ -4780,6 +4783,29 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         // pindexBestHeaderSent to be our tip.
         nodestate->pindexBestHeaderSent = pindex ? pindex : chainActive.Tip();
         pfrom->PushMessage(NetMsgType::HEADERS, vHeaders);
+    }
+
+
+    else if (strCommand == NetMsgType::CHAINDATA)
+    {
+        CChainDataMsg msg;
+        vRecv >> msg;
+
+        uint256 hashData = msg.GetHash();
+
+        CInv inv(MSG_POC_CHAIN_DATA, hashData);
+        pfrom->AddInventoryKnown(inv);
+
+        LOCK(cs_main);
+
+        pfrom->setAskFor.erase(inv.hash);
+        mapAlreadyAskedFor.erase(inv);
+
+        if (!AlreadyHave(inv)) {
+            if (!AddChainData(msg))
+                LogPrint("net", "received invalid chain data %s\n", msg.ToString());
+        } else
+            LogPrint("net", "AlreadyHave chain data %s\n", hashData.ToString());
     }
 
 

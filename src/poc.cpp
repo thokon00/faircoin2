@@ -30,6 +30,9 @@ CvnMapType mapCVNs;
 CCriticalSection cs_mapCvnSigs;
 CvnSigMapType mapCvnSigs;
 
+CCriticalSection cs_mapChainData;
+ChainDataMapType mapChainData;
+
 bool static CvnSignWithKey(const uint256& hashUnsignedBlock, const std::string strCvnPrivKey, CCvnSignature& signature, const CCvnInfo& cvnInfo)
 {
     CBitcoinSecret secret;
@@ -126,14 +129,12 @@ bool CvnSignBlock(CBlock& block)
 
 bool CvnVerifySignature(const uint256 &hash, const CCvnSignature &sig)
 {
-    CvnMapType::iterator it = mapCVNs.find(sig.nSignerId);
-
-    if (it == mapCVNs.end()) {
+    if (!mapCVNs.count(sig.nSignerId)) {
         LogPrintf("ERROR: could not find CvnInfo for signer ID 0x%08x\n", sig.nSignerId);
         return false;
     }
 
-    CPubKey pubKey = CPubKey(it->second.vPubKey);
+    CPubKey pubKey = CPubKey(mapCVNs[sig.nSignerId].vPubKey);
 
     bool ret = pubKey.Verify(hash, sig.vSignature);
 
@@ -141,6 +142,91 @@ bool CvnVerifySignature(const uint256 &hash, const CCvnSignature &sig)
         LogPrintf("could not verify sig %s for hash %s for node Id 0x%08x\n", HexStr(sig.vSignature), hash.ToString(), sig.nSignerId);
 
     return ret;
+}
+
+bool CvnVerifyAdminSignature(const uint256 &hash, const CCvnSignature &sig)
+{
+    if (!mapChainAdmins.count(sig.nSignerId)) {
+        LogPrintf("ERROR: could not find CvnInfo for signer ID 0x%08x\n", sig.nSignerId);
+        return false;
+    }
+
+    CPubKey pubKey = CPubKey(mapChainAdmins[sig.nSignerId].vPubKey);
+
+    if (!pubKey.IsFullyValid()) {
+        LogPrintf("FATAL: invalid key found for admin Id 0x%08x\n", HexStr(mapChainAdmins[sig.nSignerId].vPubKey), hash.ToString(), sig.nSignerId);
+        return false;
+    }
+
+    bool ret = pubKey.Verify(hash, sig.vSignature);
+
+    if (!ret)
+        LogPrintf("could not verify admin sig %s for hash %s for admin Id 0x%08x\n", HexStr(sig.vSignature), hash.ToString(), sig.nSignerId);
+
+    return ret;
+}
+
+void RelayChainData(const CChainDataMsg& msg)
+{
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    ss << msg;
+
+    CInv inv(MSG_POC_CHAIN_DATA, msg.GetHash());
+    {
+        LOCK(cs_mapRelay);
+        // Expire old relay messages
+        while (!vRelayExpiration.empty() && vRelayExpiration.front().first < GetTime())
+        {
+            mapRelay.erase(vRelayExpiration.front().second);
+            vRelayExpiration.pop_front();
+        }
+
+        // Save original serialized message so newer versions are preserved
+        mapRelay.insert(std::make_pair(inv, ss));
+        vRelayExpiration.push_back(std::make_pair(GetTime() + dynParams.nBlockSpacing * 60, inv));
+    }
+
+    LOCK(cs_vNodes);
+    BOOST_FOREACH(CNode* pnode, vNodes)
+    {
+        if(!pnode->fRelayTxes) // same TX rules apply to chain data messages
+            continue;
+        pnode->PushInventory(inv);
+    }
+}
+
+bool CheckAdminSignatures(const uint256 hashAdminData, const vector<CCvnSignature> vAdminSignatures)
+{
+    // first check the admin sigs
+    BOOST_FOREACH(const CCvnSignature& sig, vAdminSignatures) {
+        if (!CvnVerifyAdminSignature(hashAdminData, sig)) {
+            LogPrintf("ERROR: could not verify admin signature ID 0x%08x\n", sig.nSignerId);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool AddChainData(const CChainDataMsg& msg)
+{
+    if (!CheckAdminSignatures(msg.GetHash(), msg.vAdminSignatures))
+        return false;
+
+    uint256 hashBlock = msg.hashPrevBlock;
+
+    LOCK(cs_mapChainData);
+    if (mapChainData.count(hashBlock)) {
+        LogPrintf("received duplicate chain data for block %s: %s\n", hashBlock.ToString(), msg.ToString());
+        return false;
+    }
+
+    mapChainData.insert(std::make_pair(hashBlock, msg));
+
+    LogPrintf("AddChainData : signed by %u (minimum %u) admins of %u to be added after blockHash %s\n",
+            msg.vAdminSignatures.size(), dynParams.nMinCvnSigners, dynParams.nMaxCvnSigners, hashBlock.ToString());
+
+    return true;
 }
 
 void RelayCvnSignature(const CCvnSignatureMsg& signature)
@@ -329,6 +415,7 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
 {
     uint256 hashBlock = block.GetHash();
 
+    // check block signatures from the CVNs
     if (!block.vSignatures.size())
         return error("block %s has no signatures", hashBlock.ToString());
 
@@ -337,6 +424,7 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
             return error("signature is invalid: %s", signature.ToString());
     }
 
+    // check if creator ID matches consensus rules
     if (!mapBlockIndex.count(block.hashPrevBlock) && hashBlock != params.hashGenesisBlock)
         return error("block has no hashPrevBlock: %s", block.GetHash().ToString());
 

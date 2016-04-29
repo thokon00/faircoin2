@@ -15,13 +15,7 @@
 #include "pubkey.h"
 #include "consensus/params.h"
 
-
 uint256 CBlockHeader::GetHash() const
-{
-    return SerializeHash(*this);
-}
-
-uint256 CCvnInfo::GetHash() const
 {
     return SerializeHash(*this);
 }
@@ -36,55 +30,20 @@ uint256 CBlock::HashChainAdmins() const
     return SerializeHash(this->vChainAdmins);
 }
 
-uint256 CDynamicChainParams::GetHash() const
+uint256 CBlock::GetChainAdminDataHash() const
 {
-    return SerializeHash(*this);
-}
+    std::vector<uint256> hashes;
 
-std::string CDynamicChainParams::ToString() const
-{
-	std::stringstream s;
-	    s << strprintf("CDynamicChainParams(ver=%d, minCvnSigners=%u, maxCvnSigners=%u, blockSpacing=%u, blockSpacingGracePeriod=%u, dustThreshold=%u, minSuccessiveSignatures=%u)",
-	        nVersion,
-			nMinCvnSigners, nMaxCvnSigners,
-			nBlockSpacing, nBlockSpacingGracePeriod,
-			nDustThreshold,
-			nMinSuccessiveSignatures
-		);
-	return s.str();
-}
+    hashes.push_back(hashPrevBlock);
 
-uint256 CCvnSignatureMsg::GetHash() const
-{
-    return SerializeHash(*this);
-}
+    if (HasCvnInfo())
+        hashes.push_back(HashCVNs());
+    if (HasChainParameters())
+        hashes.push_back(dynamicChainParams.GetHash());
+    if (HasChainAdmins())
+        hashes.push_back(HashChainAdmins());
 
-std::string CCvnSignature::ToString() const
-{
-    std::stringstream s;
-    s << strprintf("CCvnSignature(signerId=%u, ver=%d, sig=%s)",
-        nSignerId,
-        nVersion,
-        HexStr(vSignature)); //TODO: limit again .substr(0, 30));
-    return s.str();
-}
-
-std::string CCvnInfo::ToString() const
-{
-    std::stringstream s;
-    s << strprintf("CCvnInfo(nodeId=%u, heightAdded=%u, pubkey=%s)",
-        nNodeId, nHeightAdded,
-        HexStr(vPubKey));
-    return s.str();
-}
-
-std::string CChainAdmin::ToString() const
-{
-    std::stringstream s;
-    s << strprintf("CChainAdmin(adminId=%u, pubkey=%s)",
-        nAdminId,
-        HexStr(vPubKey));
-    return s.str();
+    return Hash(hashes.begin(), hashes.end());
 }
 
 std::string CBlock::ToString() const

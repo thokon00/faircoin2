@@ -39,8 +39,7 @@
 */
 
 /* This implements a constant-space merkle root/path calculator, limited to 2^32 leaves. */
-static void MerkleComputation(const std::vector<uint256>& leaves, uint256* proot, bool* pmutated, uint32_t branchpos, std::vector<uint256>* pbranch)
-{
+static void MerkleComputation(const std::vector<uint256>& leaves, uint256* proot, bool* pmutated, uint32_t branchpos, std::vector<uint256>* pbranch) {
     if (pbranch) pbranch->clear();
     if (leaves.size() == 0) {
         if (pmutated) *pmutated = false;
@@ -127,15 +126,13 @@ static void MerkleComputation(const std::vector<uint256>& leaves, uint256* proot
     if (proot) *proot = h;
 }
 
-uint256 ComputeMerkleRoot(const std::vector<uint256>& leaves, bool* mutated)
-{
+uint256 ComputeMerkleRoot(const std::vector<uint256>& leaves, bool* mutated) {
     uint256 hash;
     MerkleComputation(leaves, &hash, mutated, -1, NULL);
     return hash;
 }
 
-std::vector<uint256> ComputeMerkleBranch(const std::vector<uint256>& leaves, uint32_t position)
-{
+std::vector<uint256> ComputeMerkleBranch(const std::vector<uint256>& leaves, uint32_t position) {
     std::vector<uint256> ret;
     MerkleComputation(leaves, NULL, NULL, position, &ret);
     return ret;
@@ -156,34 +153,12 @@ uint256 ComputeMerkleRootFromBranch(const uint256& leaf, const std::vector<uint2
 
 uint256 BlockMerkleRoot(const CBlock& block, bool* mutated)
 {
-    std::vector<uint256> hashes;
-    uint256 hashTxBlock;
-
-    if (block.HasTx()) {
-        std::vector<uint256> leaves;
-        leaves.resize(block.vtx.size());
-        for (size_t s = 0; s < block.vtx.size(); s++) {
-            leaves[s] = block.vtx[s].GetHash();
-        }
-        hashTxBlock = ComputeMerkleRoot(leaves, mutated);
-        hashes.push_back(hashTxBlock);
-    } else
-        if (mutated) *mutated = false;
-
-    if (block.HasCvnInfo())
-        hashes.push_back(block.HashCVNs());
-
-    if (block.HasChainParameters())
-        hashes.push_back(block.dynamicChainParams.GetHash());
-
-    if (block.HasChainAdmins())
-        hashes.push_back(block.HashChainAdmins());
-
-    // if the block only has txs we directly return ComputeMerkleRoot()
-    if (block.HasTx() && hashes.size() == 1)
-        return hashTxBlock;
-
-    return Hash(hashes.begin(), hashes.end());
+    std::vector<uint256> leaves;
+    leaves.resize(block.vtx.size());
+    for (size_t s = 0; s < block.vtx.size(); s++) {
+        leaves[s] = block.vtx[s].GetHash();
+    }
+    return ComputeMerkleRoot(leaves, mutated);
 }
 
 std::vector<uint256> BlockMerkleBranch(const CBlock& block, uint32_t position)

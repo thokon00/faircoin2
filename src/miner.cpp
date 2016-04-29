@@ -326,6 +326,35 @@ static bool ProcessCVNBlock(const CBlock* pblock, const CChainParams& chainparam
     return true;
 }
 
+// we already hold lock cs_mapChainData
+static bool AddChainDataToBlock(CBlock *pblock, const CChainDataMsg& msg)
+{
+    LogPrintf("adding chain admin data to block #%u: %s\n", chainActive.Tip()->nHeight + 1, msg.ToString());
+
+    if (msg.vAdminSignatures.empty() || !msg.nPayload) {
+        LogPrintf("ERROR: no signatures available, payload: %u\n", msg.nPayload);
+        return false;
+    }
+
+    if (msg.HasCvnInfo()) {
+        pblock->nVersion |= CBlock::CVN_PAYLOAD;
+        pblock->vCvns = msg.vCvns;
+    }
+    if (msg.HasChainAdmins()) {
+        pblock->nVersion |= CBlock::CHAIN_ADMINS_PAYLOAD;
+        pblock->vChainAdmins = msg.vChainAdmins;
+    }
+    if (msg.HasChainParameters()) {
+        pblock->nVersion |= CBlock::CHAIN_PARAMETERS_PAYLOAD;
+        pblock->dynamicChainParams = msg.dynamicChainParams;
+    }
+
+    // and finally the admin signatures
+    pblock->vAdminSignatures = msg.vAdminSignatures;
+
+    return true;
+}
+
 void static CertifiedValidationNode(const CChainParams& chainparams, const uint32_t& nNodeId)
 {
     SetThreadPriority(THREAD_PRIORITY_NORMAL);
@@ -437,14 +466,26 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
             uint256 hashBlock = pblock->hashPrevBlock;
             {
                 LOCK(cs_mapCvnSigs);
-                CvnSigEntryType sigsForHashPrev = mapCvnSigs[hashBlock];
-                LogPrintf("# of sig available: %u (total: %u)\n  hash: %s\n", sigsForHashPrev.size(), mapCvnSigs.size(), hashBlock.ToString());
-                BOOST_FOREACH(CvnSigEntryType::value_type& cvn, sigsForHashPrev)
-                {
-                    if (!CvnValidateSignature(cvn.second, pblock->hashPrevBlock, nNodeId))
-                        LogPrintf("ERROR: could not add signature to block: %s\n", cvn.second.ToString());
-                    else
-                        pblock->vSignatures.push_back(cvn.second);
+                if (mapCvnSigs.count(hashBlock)) {
+                    CvnSigEntryType sigsForHashPrev = mapCvnSigs[hashBlock];
+                    LogPrintf("# of sig available: %u (total: %u)\n  hash: %s\n", sigsForHashPrev.size(), mapCvnSigs.size(), hashBlock.ToString());
+                    BOOST_FOREACH(CvnSigEntryType::value_type& cvn, sigsForHashPrev)
+                    {
+                        if (!CvnValidateSignature(cvn.second, pblock->hashPrevBlock, nNodeId))
+                            LogPrintf("ERROR: could not add signature to block: %s\n", cvn.second.ToString());
+                        else
+                            pblock->vSignatures.push_back(cvn.second);
+                    }
+                }
+            }
+
+            {
+                LOCK(cs_mapChainData);
+                if (mapChainData.count(hashBlock)) {
+                    CChainDataMsg& msg = mapChainData[hashBlock];
+                    if (!AddChainDataToBlock(pblock, msg)) {
+                        LogPrintf("ERROR: could not add chain data to block\n");
+                    }
                 }
             }
 
