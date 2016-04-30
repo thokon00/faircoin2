@@ -3032,10 +3032,16 @@ static bool CheckIndexAgainstCheckpoint(const CBlockIndex* pindexPrev, CValidati
     return true;
 }
 
-bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& state, CBlockIndex * const pindexPrev)
+bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& state, CBlockIndex * const pindexPrev, bool fCheckSignatures)
 {
     //const Consensus::Params& consensusParams = Params().GetConsensus();
     //TODO: Check proof of cooperation
+    LogPrintf("ContextualCheckBlockHeader : checking # of sigs: Prev: %u, This: %u\n", pindexPrev->vSignatures.size(), block.vSignatures.size());
+    if (fCheckSignatures && pindexPrev->vSignatures.size() > 1 && ((float)pindexPrev->vSignatures.size() / (float)2 >= (float)block.vSignatures.size())) {
+        return state.Invalid(error("%s: not enough signatures available. Prev: %u, This: %u", __func__,
+                pindexPrev->vSignatures.size(), block.vSignatures.size()),
+                                     REJECT_INVALID, "not-enough-sigs");
+    }
 //    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
 //        return state.DoS(100, error("%s: incorrect proof of work", __func__),
 //                         REJECT_INVALID, "bad-diffbits");
@@ -3263,7 +3269,7 @@ bool TestBlockValidity(CValidationState& state, const CChainParams& chainparams,
     indexDummy.nHeight = pindexPrev->nHeight + 1;
 
     // NOTE: CheckBlockHeader is called by CheckBlock
-    if (!ContextualCheckBlockHeader(block, state, pindexPrev))
+    if (!ContextualCheckBlockHeader(block, state, pindexPrev, false))
         return false;
     if (!CheckBlock(block, state, fCheckPOW, fCheckMerkleRoot))
         return false;

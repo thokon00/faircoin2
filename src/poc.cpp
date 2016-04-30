@@ -424,10 +424,14 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
             return error("signature is invalid: %s", signature.ToString());
     }
 
-    // check if creator ID matches consensus rules
-    if (!mapBlockIndex.count(block.hashPrevBlock) && hashBlock != params.hashGenesisBlock)
-        return error("block %s has no hashPrevBlock: %s", block.GetHash().ToString(), block.hashPrevBlock.ToString());
+    if (!mapBlockIndex.count(block.hashPrevBlock)) {
+        if (hashBlock != params.hashGenesisBlock)
+            LogPrint("cvn", "CheckProofOfCooperation : can not check orphan block %s created by 0x%08x, delaying check.\n",
+                        hashBlock.ToString(), block.nCreatorId);
+            return true;
+    }
 
+    // check if creator ID matches consensus rules
     uint32_t nBlockCreator = (hashBlock == params.hashGenesisBlock) ?
             block.nCreatorId :
             CheckNextBlockCreator(mapBlockIndex[block.hashPrevBlock], block.nTime);

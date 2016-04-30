@@ -482,6 +482,12 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                         else
                             pblock->vSignatures.push_back(cvn.second);
                     }
+
+                    if (pindexPrev->vSignatures.size() > 1 && ((float)pindexPrev->vSignatures.size() / (float)2 >= (float)pblock->vSignatures.size())) {
+                        LogPrintf("ERROR: can not create block. Not enough signatures available. Prev: %u, This: %u",
+                                pindexPrev->vSignatures.size(), pblock->vSignatures.size());
+                        continue;
+                    }
                 }
             }
 
