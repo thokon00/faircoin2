@@ -18,8 +18,9 @@
 typedef std::map<uint32_t, CCvnInfo> CvnMapType;
 typedef std::map<uint32_t, CChainAdmin> ChainAdminMapType;
 
-typedef std::map<uint32_t, CCvnSignature> CvnSigEntryType;
-typedef std::map<uint256, CvnSigEntryType> CvnSigMapType;
+typedef std::map<uint32_t, CCvnSignature> CvnSigSignerType;
+typedef std::map<uint32_t, CvnSigSignerType> CvnSigCreatorType;
+typedef std::map<uint256, CvnSigCreatorType> CvnSigMapType;
 
 typedef std::map<uint256, CChainDataMsg> ChainDataMapType;
 
@@ -47,9 +48,10 @@ bool CvnVerifySignature(const uint256 &hash, const CCvnSignature &sig);
 bool CvnVerifyAdminSignature(const uint256 &hash, const CCvnSignature &sig);
 bool CheckForDuplicateCvns(const CBlock& block);
 bool CheckForDuplicateChainAdmins(const CBlock& block);
-void SendCVNSignature(const CBlockIndex *pindexNew);
+void SendCVNSignature(const CBlockIndex *pindexNew, const bool fRelay = true);
 bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId);
 bool AddChainData(const CChainDataMsg& msg);
+void RemoveCvnSignatures(const uint256& hashPrevBlock);
 bool CvnValidateSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId);
 bool CheckAdminSignatures(const uint256 hashAdminData, const vector<CCvnSignature> vAdminSignatures);
 void RelayChainData(const CChainDataMsg& msg);

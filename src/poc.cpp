@@ -10,6 +10,7 @@
 #include "base58.h"
 #include "net.h"
 #include "miner.h"
+#include "init.h"
 
 #ifdef USE_OPENSC
 #include "smartcard.h"
@@ -68,15 +69,15 @@ bool static CvnSignWithKey(const uint256& hashUnsignedBlock, const std::string s
     return true;
 }
 
-static bool CvnSignRaw(const uint256& hashToSign, CCvnSignature& signature, const uint32_t& nNodeId)
+static bool CvnSignHash(const uint256& hashToSign, CCvnSignature& signature, const uint32_t& nNodeId)
 {
     if (!nNodeId) {
-        LogPrintf("CvnSign : CVN node not initialized\n");
+        LogPrintf("CvnSignHash : CVN node not initialized\n");
         return false;
     }
 
     if (!mapCVNs.count(nNodeId)) {
-        LogPrintf("CvnSign : could not find CvnInfo for signer ID 0x%08x\n", nNodeId);
+        LogPrintf("CvnSignHash : could not find CvnInfo for signer ID 0x%08x\n", nNodeId);
         return false;
     }
 
@@ -86,19 +87,19 @@ static bool CvnSignRaw(const uint256& hashToSign, CCvnSignature& signature, cons
     if (GetBoolArg("-usesmartcard", false)) {
 #ifdef USE_OPENSC
         if (!fSmartCardUnlocked) {
-            LogPrint("cvn", "SignBlock : ERROR, smart card not unlocked. Make sure that -cvnpin, -cvnslot and -cvnkeyid are set correctly\n");
+            LogPrint("cvn", "CvnSignHash : ERROR, smart card not unlocked. Make sure that -cvnpin, -cvnslot and -cvnkeyid are set correctly\n");
             return false;
         }
         return CvnSignWithSmartCard(hashToSign, signature, cvnInfo);
 #else
-        LogPrintf("CvnSign : ERROR, this wallet was not compiled with smart card support\n");
+        LogPrintf("CvnSignHash : ERROR, this wallet was not compiled with smart card support\n");
         return false;
 #endif
     } else {
         std::string strCvnPrivKey = GetArg("-cvnprivkey", "");
 
         if (strCvnPrivKey.size() != 51) {
-            LogPrint("cvn", "CvnSign : ERROR, invalid private key supplied or -cvnprivkey is missing\n");
+            LogPrint("cvn", "CvnSignHash : ERROR, invalid private key supplied or -cvnprivkey is missing\n");
             return false;
         }
 
@@ -113,13 +114,13 @@ bool CvnSign(const uint256& hashBlock, CCvnSignature& signature, const uint32_t&
     CHashWriter hasher(SER_GETHASH, 0);
     hasher << hashBlock << nNextCreator << nNodeId;
 
-    return CvnSignRaw(hasher.GetHash(), signature, nNodeId);
+    return CvnSignHash(hasher.GetHash(), signature, nNodeId);
 }
 
 bool CvnSignBlock(CBlock& block)
 {
     CCvnSignature signature;
-    if (!CvnSignRaw(block.GetHash(), signature, block.nCreatorId)) {
+    if (!CvnSignHash(block.GetHash(), signature, block.nCreatorId)) {
         return false;
     }
 
@@ -258,15 +259,26 @@ void RelayCvnSignature(const CCvnSignatureMsg& signature)
     }
 }
 
+bool CvnValidateSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId)
+{
+    CHashWriter hasher(SER_GETHASH, 0);
+    hasher << hashPrevBlock << nCreatorId << signature.nSignerId;
+
+    return CvnVerifySignature(hasher.GetHash(), signature);
+}
+
 bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId)
 {
     if (!CvnValidateSignature(signature, hashPrevBlock, nCreatorId)) {
-        LogPrintf("AddCvnSignature : invalid signature received %u\n", signature.nSignerId);
+        LogPrintf("AddCvnSignature : invalid signature received for 0x%08x by 0x%08x, hash %s\n", nCreatorId, signature.nSignerId, hashPrevBlock.ToString());
         return false;
     }
 
     LOCK(cs_mapCvnSigs);
-    CvnSigEntryType& mapCvnForhashPrev = mapCvnSigs[hashPrevBlock];
+    CvnSigCreatorType& mapSigsByCreators = mapCvnSigs[hashPrevBlock];
+
+    CvnSigSignerType& mapCvnForhashPrev = mapSigsByCreators[nCreatorId]; // this adds an element if not already there, that's OK
+
     if (mapCvnForhashPrev.count(signature.nSignerId)) // already have this, no error
         return true;
 
@@ -276,15 +288,17 @@ bool AddCvnSignature(const CCvnSignature& signature, const uint256& hashPrevBloc
     return true;
 }
 
-bool CvnValidateSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId)
+void RemoveCvnSignatures(const uint256& hashPrevBlock)
 {
-    CHashWriter hasher(SER_GETHASH, 0);
-    hasher << hashPrevBlock << nCreatorId << signature.nSignerId;
+    LOCK(cs_mapCvnSigs);
 
-    return CvnVerifySignature(hasher.GetHash(), signature);
+    if (!mapCvnSigs.count(hashPrevBlock))
+        return;
+
+    mapCvnSigs.erase(hashPrevBlock);
 }
 
-void SendCVNSignature(const CBlockIndex *pindexNew)
+void SendCVNSignature(const CBlockIndex *pindexNew, const bool fRelay)
 {
     if (IsInitialBlockDownload())
         return;
@@ -300,7 +314,8 @@ void SendCVNSignature(const CBlockIndex *pindexNew)
 
     CCvnSignature signature;
     if (!CvnSign(pindexNew->GetBlockHash(), signature, nNextCreator, nCvnNodeId)) {
-        LogPrintf("SendCVNSignature : could not sign block\n");
+        LogPrintf("SendCVNSignature : could not create sig for 0x%08x by 0x%08x, hash %s\n",
+                nNextCreator, signature.nSignerId, hashPrevBlock.ToString());
         return;
     }
 
@@ -314,7 +329,7 @@ void SendCVNSignature(const CBlockIndex *pindexNew)
     msg.hashPrev   = hashPrevBlock;
     msg.nCreatorId = nNextCreator;
 
-    if (AddCvnSignature(signature, msg.hashPrev, nNextCreator))
+    if (fRelay && AddCvnSignature(signature, msg.hashPrev, nNextCreator))
         RelayCvnSignature(msg);
 }
 
@@ -675,38 +690,48 @@ void static CCVNSignerThread(const CChainParams& chainparams, const uint32_t& nN
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
     RenameThread("CVN-signer");
 
+#if 0
+    while (IsInitialBlockDownload() && !ShutdownRequested())
+        MilliSleep(1000);
+#endif
+
+    uint32_t nNextCreator = CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime());
+
+    while (!nNextCreator && !ShutdownRequested()) {
+        MilliSleep(1000);
+        nNextCreator = CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime());
+    }
+
+    uint32_t nLastCreator = nNextCreator;
+
+    SendCVNSignature(chainActive.Tip());
     try {
-        /* Get
-         *
-         */
-        uint32_t nWait = 5000000 * 2; // 5 seconds
         while (true) {
+            uint32_t nWait = 5 * 2; // 5 seconds
 
-            while (nWait--) {
+            while (nWait--)
                 MilliSleep(500);
+
+            CBlockIndex* pindexPrev = chainActive.Tip();
+
+            nNextCreator = CheckNextBlockCreator(pindexPrev, GetAdjustedTime());
+            if (nLastCreator != nNextCreator) {
+                srand(pindexPrev->nTime);
+                uint32_t nRandomWait = rand() % 10 + 1;
+
+                while (nRandomWait--)
+                     MilliSleep(500);
+
+                LogPrintf("CCVNSignerThread : sending sig for prev block: %s\n", chainActive.Tip()->GetBlockHash().ToString());
+                SendCVNSignature(chainActive.Tip());
+                nLastCreator = nNextCreator;
+
+                // clear old entries in mapCvnSigs
+                LOCK(cs_mapCvnSigs);
+                for (const CBlockIndex* pindex = pindexPrev; pindex; pindex = pindex->pprev) {
+
+                }
             }
-            nWait = 5000000 * 2;
-
-//            int64_t adjustedTime = GetAdjustedTime();
-//            int64_t lastBlockTime = pindexBestHeader->GetBlockTime();
-
-//            if ((int64_t)(lastBlockTime + chainparams.BlockSpacing() - 10) > adjustedTime)
-//                continue;
-
-            LogPrintf("CVN signer assuming Phase 2\n");
-
-            // find the node with the highest time weight
-            CBlockIndex *pBlockIndex = chainActive.Tip();
-            //int nBlockCount = 1;
-            //uint32_t nCreatorId = pBlockIndex->nCreatorId;
-
-            do
-            {
-                pBlockIndex = pBlockIndex->pprev;
-                if (pBlockIndex != NULL)
-                    LogPrintf("test: %u 0x%08x\n", pBlockIndex->nHeight, pBlockIndex->nCreatorId);
-            }
-            while (pBlockIndex != NULL);
         }
     }
     catch (const boost::thread_interrupted&)

@@ -464,9 +464,10 @@ static void AddChainAdminToBlock(CChainDataMsg &msg, const uint32_t nAdminId, co
 
 static void AddDynParamsToBlock(CChainDataMsg& msg, UniValue jsonParams)
 {
+    LogPrintf("AddDynParamsToBlock : adding %u parameters\n", jsonParams.getKeys().size());
     msg.nPayload |= CChainDataMsg::CHAIN_PARAMETERS_PAYLOAD;
 
-    CDynamicChainParams &params = msg.dynamicChainParams;
+    CDynamicChainParams& params = msg.dynamicChainParams;
 
     params.nBlockSpacing            = dynParams.nBlockSpacing;
     params.nBlockSpacingGracePeriod = dynParams.nBlockSpacingGracePeriod;
@@ -477,6 +478,7 @@ static void AddDynParamsToBlock(CChainDataMsg& msg, UniValue jsonParams)
 
     vector<string> paramsList = jsonParams.getKeys();
     BOOST_FOREACH(const string& key, paramsList) {
+        LogPrintf("AddDynParamsToBlock : adding %s: %u\n", key, jsonParams[key].get_int());
         if (key == "nBlockSpacing") {
             params.nBlockSpacing = jsonParams[key].get_int();
         } else if (key == "nBlockSpacingGracePeriod") {
@@ -549,8 +551,10 @@ UniValue addcvn(const UniValue& params, bool fHelp)
             AddChainAdminToBlock(msg, nNodeId, vPubKey);
     }
 
-    if (!params[5].isNull())
-        AddDynParamsToBlock(msg, params[5].get_obj());
+    LogPrintf("Test: %u\nTest: %u\n", (int)params[4].isObject(), (int)params[4].isNull());
+
+    if (params[4].isObject() && !params[4].get_obj().getKeys().empty())
+        AddDynParamsToBlock(msg, params[4].get_obj());
 
     // if no signatures are supplied we print out the CChainDataMsg's hash to sign
     if (!sigs.size())

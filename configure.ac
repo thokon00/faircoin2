@@ -842,7 +842,7 @@ else
 fi
 
 dnl enable OpenSC
-AC_MSG_CHECKING([whether to build with OpenSC disabled by default])
+AC_MSG_CHECKING([whether to build with OpenSC])
 if test x$use_opensc != xno; then
   AC_MSG_RESULT(yes ($use_opensc))
   AC_DEFINE_UNQUOTED([USE_OPENSC],[$use_opensc],[OpenSC support])

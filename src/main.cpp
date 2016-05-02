@@ -2090,7 +2090,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTime3 = GetTimeMicros(); nTimeConnect += nTime3 - nTime2;
     LogPrint("bench", "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs]\n", (unsigned)block.vtx.size(), 0.001 * (nTime3 - nTime2), 0.001 * (nTime3 - nTime2) / block.vtx.size(), nInputs <= 1 ? 0 : 0.001 * (nTime3 - nTime2) / (nInputs-1), nTimeConnect * 0.000001);
 
-    CAmount blockReward = nFees;
+    CAmount blockReward = nFees + (hashPrevBlock == chainparams.GetConsensus().hashGenesisBlock ? MAX_MONEY : 0);
     if (block.HasTx() && block.vtx[0].GetValueOut() > blockReward)
         return state.DoS(100,
                          error("ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)",
@@ -2286,29 +2286,30 @@ void static UpdateTip(CBlockIndex *pindexNew) {
 
     // Check the version of the last 100 blocks to see if we need to upgrade:
     static bool fWarned = false;
-    if (!IsInitialBlockDownload() && !fWarned)
+    if (!IsInitialBlockDownload())
     {
-        int nUpgraded = 0;
-        const CBlockIndex* pindex = chainActive.Tip();
-        for (int i = 0; i < 100 && pindex != NULL; i++)
-        {
-            if ((pindex->nVersion & ~CBlock::PAYLOAD_MASK) > CBlock::CURRENT_VERSION)
-                ++nUpgraded;
-            pindex = pindex->pprev;
+        if (!fWarned) {
+            int nUpgraded = 0;
+            const CBlockIndex* pindex = chainActive.Tip();
+            for (int i = 0; i < 100 && pindex != NULL; i++)
+            {
+                if ((pindex->nVersion & ~CBlock::PAYLOAD_MASK) > CBlock::CURRENT_VERSION)
+                    ++nUpgraded;
+                pindex = pindex->pprev;
+            }
+            if (nUpgraded > 0)
+                LogPrintf("%s: %d of last 100 blocks above version %d\n", __func__, nUpgraded, (int)(CBlock::CURRENT_VERSION & ~CBlock::PAYLOAD_MASK));
+            if (nUpgraded > 100/2)
+            {
+                // strMiscWarning is read by GetWarnings(), called by Qt and the JSON-RPC code to warn the user:
+                strMiscWarning = _("Warning: This version is obsolete; upgrade required!");
+                CAlert::Notify(strMiscWarning, true);
+                fWarned = true;
+            }
         }
-        if (nUpgraded > 0)
-            LogPrintf("%s: %d of last 100 blocks above version %d\n", __func__, nUpgraded, (int)(CBlock::CURRENT_VERSION & ~CBlock::PAYLOAD_MASK));
-        if (nUpgraded > 100/2)
-        {
-            // strMiscWarning is read by GetWarnings(), called by Qt and the JSON-RPC code to warn the user:
-            strMiscWarning = _("Warning: This version is obsolete; upgrade required!");
-            CAlert::Notify(strMiscWarning, true);
-            fWarned = true;
-        }
-    }
 
-    if (nCvnNodeId)
-        SendCVNSignature(pindexNew);
+        RemoveCvnSignatures(pindexNew->pprev->GetBlockHash());
+    }
 }
 
 /** Disconnect chainActive's tip. You probably want to call mempool.removeForReorg and manually re-limit mempool size after this, with cs_main held. */
@@ -4847,20 +4848,24 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
         vRecv >> hashPeersTip >> nNextCreator;
 
-        LogPrint("net", "peer %d requests CVN signature list for %u tip: %s\n", pfrom->id, nNextCreator, hashPeersTip.ToString());
+        LogPrint("net", "peer %d requests CVN signature list for 0x%08x tip: %s\n", pfrom->id, nNextCreator, hashPeersTip.ToString());
 
         if (mapCvnSigs.count(hashPeersTip)) {
             LOCK(cs_mapCvnSigs);
-            CvnSigEntryType sigsForHash = mapCvnSigs[hashPeersTip];
-            vector<CCvnSignature> vSigList(sigsForHash.size());
+            CvnSigCreatorType mapSigsByCreator = mapCvnSigs[hashPeersTip];
 
-            int i = 0;
-            BOOST_FOREACH(CvnSigEntryType::value_type& cvn, sigsForHash) {
-                vSigList[i++] = cvn.second;
+            if (mapSigsByCreator.count(nNextCreator)) {
+                CvnSigSignerType mapSigsBySigner = mapSigsByCreator[nNextCreator];
+                vector<CCvnSignature> vSigList(mapSigsBySigner.size());
+
+                int i = 0;
+                BOOST_FOREACH(CvnSigSignerType::value_type& sig, mapSigsBySigner) {
+                    vSigList[i++] = sig.second;
+                }
+
+                if (vSigList.size())
+                    pfrom->PushMessage(NetMsgType::SIGLIST, hashPeersTip, nNextCreator, vSigList);
             }
-
-            if (vSigList.size())
-                pfrom->PushMessage(NetMsgType::SIGLIST, hashPeersTip, nNextCreator, vSigList);
         }
     }
 
@@ -4882,10 +4887,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         else {
             if (vSigList.size()) {
                 LOCK(cs_mapCvnSigs);
-                CvnSigEntryType sigsForHash = mapCvnSigs[hashPeersTip];
+                CvnSigCreatorType mapSigsByCreator = mapCvnSigs[hashPeersTip];
+                CvnSigSignerType mapSigsBySigner = mapSigsByCreator[nNextCreator]; // it's OK to add an element here
 
                 for (uint32_t i = 0; i < vSigList.size() ; i++) {
-                    if (!sigsForHash.count(vSigList[i].nSignerId)) {
+                    LogPrintf("nNextCreator: 0x%08x, prev: %s, %s\n", nNextCreator, hashPeersTip.ToString(), vSigList[i].ToString());
+                    if (!mapSigsBySigner.count(vSigList[i].nSignerId)) {
                         if (!AddCvnSignature(vSigList[i], hashPeersTip, nNextCreator))
                             Misbehaving(pfrom->GetId(), 50);
                     }

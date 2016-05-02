@@ -274,7 +274,7 @@ static CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CSc
         LogPrintf("CreateNewBlock(): total size %u txs: %u fees: %ld sigops %d\n", nBlockSize, nBlockTx, nFees, nBlockSigOps);
 
         // Compute final coinbase transaction.
-        txNew.vout[0].nValue = nFees;
+        txNew.vout[0].nValue = nFees + (pindexPrev->GetBlockHash() == chainparams.GetConsensus().hashGenesisBlock ? MAX_MONEY : 0);
         txNew.vin[0].scriptSig = CScript() << nHeight << OP_0;
         pblock->vtx[0] = txNew;
         pblocktemplate->vTxFees[0] = -nFees;
@@ -418,16 +418,17 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                 MilliSleep(500);
             }
 
+#if 0
             {
                 LOCK(cs_mapCvnSigs);
                 uint256 hashTip = chainActive.Tip()->GetBlockHash();
-                CvnSigEntryType& sigsForHashPrev = mapCvnSigs[hashTip];
+                CvnSigCreatorType& sigsForHashPrev = mapCvnSigs[hashTip];
 #if POC_DEBUG
                 LogPrintf("list of tips in sig map\n");
                 BOOST_FOREACH(CvnSigMapType::value_type& map4hash, mapCvnSigs) {
                     LogPrintf("  %s\n", map4hash.first.ToString());
                     LogPrintf("  list of sig in tip map\n");
-                    BOOST_FOREACH(CvnSigEntryType::value_type& cvn, map4hash.second) {
+                    BOOST_FOREACH(CvnSigCreatorType::value_type& cvn, map4hash.second) {
                         LogPrintf("    %u : %s\n", cvn.first, cvn.second.ToString());
                     }
                 }
@@ -437,15 +438,16 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                     SendCVNSignature(chainActive.Tip());
                 }
             }
+#endif
+
+            // wait for block spacing
+            if (chainActive.Tip()->nTime + dynParams.nBlockSpacing > GetAdjustedTime())
+                continue;
 
             if (CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime()) != nNodeId) {
                 nExtraNonce++; // create some 'randomness' for the coinbase
                 continue;
             }
-
-            // wait for block spacing
-            if (chainActive.Tip()->nTime + dynParams.nBlockSpacing > GetAdjustedTime())
-                continue;
 
             //
             // This node is potentially the next to advance the chain
@@ -466,28 +468,45 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
             uint256 hashBlock = pblock->hashPrevBlock;
             {
                 LOCK(cs_mapCvnSigs);
-                if (mapCvnSigs.count(hashBlock)) {
-                    CvnSigEntryType sigsForHashPrev = mapCvnSigs[hashBlock];
-                    LogPrintf("# of sig available: %u (total: %u)\n  hash: %s\n", sigsForHashPrev.size(), mapCvnSigs.size(), hashBlock.ToString());
 
-                    if (sigsForHashPrev.empty()) {
-                        LogPrintf("ERROR: no signatures found. Can not create block\n");
-                        continue;
-                    }
+                if (!mapCvnSigs.count(hashBlock)) {
+                    LogPrintf("ERROR: no signatures found for hash %s. Can not create block\n", hashBlock.ToString());
+                    // try later
+                    MilliSleep(2000);
+                    continue;
+                }
 
-                    BOOST_FOREACH(CvnSigEntryType::value_type& cvn, sigsForHashPrev)
-                    {
-                        if (!CvnValidateSignature(cvn.second, pblock->hashPrevBlock, nNodeId))
-                            LogPrintf("ERROR: could not add signature to block: %s\n", cvn.second.ToString());
-                        else
-                            pblock->vSignatures.push_back(cvn.second);
-                    }
+                CvnSigCreatorType& mapSigsByCreators = mapCvnSigs[hashBlock];
+                if (!mapSigsByCreators.count(nNodeId)) {
+                    LogPrintf("ERROR: no signatures found. Can not create block\n");
+                    // try later
+                    MilliSleep(2000);
+                    continue;
+                }
 
-                    if (pindexPrev->vSignatures.size() > 1 && ((float)pindexPrev->vSignatures.size() / (float)2 >= (float)pblock->vSignatures.size())) {
-                        LogPrintf("ERROR: can not create block. Not enough signatures available. Prev: %u, This: %u",
-                                pindexPrev->vSignatures.size(), pblock->vSignatures.size());
-                        continue;
-                    }
+                CvnSigSignerType mapSigsBySigners = mapSigsByCreators[nNodeId];
+                LogPrintf("# of sig available for block %s: %u (c: %u, h: %u)\n",
+                        hashBlock.ToString(), mapSigsBySigners.size(), mapSigsByCreators.size(), mapCvnSigs.size());
+
+                if (!mapSigsBySigners.count(nCvnNodeId)) {
+                    LogPrintf("WARN: signature for local CVN (0x%08x) not found, creating...\n", nCvnNodeId);
+                    // try later
+                    MilliSleep(5000);
+                    continue;
+                }
+
+                BOOST_FOREACH(CvnSigSignerType::value_type& cvn, mapSigsBySigners)
+                {
+                    if (!CvnValidateSignature(cvn.second, pblock->hashPrevBlock, nNodeId))
+                        LogPrintf("ERROR: could not add signature to block: %s\n", cvn.second.ToString());
+                    else
+                        pblock->vSignatures.push_back(cvn.second);
+                }
+
+                if (pindexPrev->vSignatures.size() > 1 && ((float)pindexPrev->vSignatures.size() / (float)2 >= (float)pblock->vSignatures.size())) {
+                    LogPrintf("ERROR: can not create block. Not enough signatures available. Prev: %u, This: %u\n",
+                            pindexPrev->vSignatures.size(), pblock->vSignatures.size());
+                    continue;
                 }
             }
 
