@@ -1370,7 +1370,7 @@ bool IsInitialBlockDownload()
     static bool lockIBDState = false;
     if (lockIBDState)
         return false;
-    bool state = (chainActive.Height() < pindexBestHeader->nHeight - 24 * 6 ||
+    bool state = !GetBoolArg("-bumpstart", false) && (chainActive.Height() < pindexBestHeader->nHeight - 24 * 60 / (int)dynParams.nBlockSpacing ||
             pindexBestHeader->GetBlockTime() < GetTime() - chainParams.MaxTipAge());
     if (!state)
         lockIBDState = true;
@@ -2308,7 +2308,8 @@ void static UpdateTip(CBlockIndex *pindexNew) {
             }
         }
 
-        RemoveCvnSignatures(pindexNew->pprev->GetBlockHash());
+        if (pindexNew->pprev)
+            RemoveCvnSignatures(pindexNew->pprev->GetBlockHash());
     }
 }
 
@@ -3476,9 +3477,11 @@ bool static LoadBlockIndexDB()
     {
         CBlockIndex* pindex = item.second;
         pindex->nChainWork = (pindex->pprev ? pindex->pprev->nChainWork : 0) + GetBlockProof(*pindex);
+#if 0
         LogPrintf("LoadBlockIndexDB : nVersion: 0x%08x, nHeight: %u, nChainwork: %s, nStatus: %u, blockHash: %s, sigs: %u, adminSigs: %u\n",
                 pindex->nVersion, pindex->nHeight, pindex->nChainWork.ToString(), pindex->nStatus, pindex->GetBlockHash().ToString(),
                 pindex->vSignatures.size(), pindex->vAdminSignatures.size());
+#endif
         // We can link the chain of blocks for which we've received transactions at some point.
         // Pruned nodes may have deleted the block.
 

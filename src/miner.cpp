@@ -489,7 +489,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                         hashBlock.ToString(), mapSigsBySigners.size(), mapSigsByCreators.size(), mapCvnSigs.size());
 
                 if (!mapSigsBySigners.count(nCvnNodeId)) {
-                    LogPrintf("WARN: signature for local CVN (0x%08x) not found, creating...\n", nCvnNodeId);
+                    LogPrintf("WARN: signature for local CVN (0x%08x) not found...\n", nCvnNodeId);
                     // try later
                     MilliSleep(5000);
                     continue;

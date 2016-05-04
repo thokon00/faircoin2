@@ -81,7 +81,7 @@ static int find_object(CK_SESSION_HANDLE sess, CK_OBJECT_CLASS cls,
 
     rv = p11->C_FindObjectsInit(sess, attrs, nattrs);
     if (rv != CKR_OK) {
-        std::cout << "C_FindObjectsInit" << std::endl;
+        LogPrintf("C_FindObjectsInit");
         goto done;
     }
 
@@ -165,12 +165,16 @@ void InitSmartCard()
     CK_BYTE opt_object_id[1];
     CK_RV rv;
 
+    if (GetArg("-cvnpin", "").empty()) {
+        LogPrintf("ERROR: -cvnpin not supplied.\n");
+        return;
+    }
     std::string pkcs11module = GetArg("-pkcs11module", defaultPkcs11ModulePath);
     static const char * opt_module = pkcs11module.c_str();
 
     module = C_LoadModule(opt_module, &p11);
     if (module == NULL) {
-        LogPrintf("Failed to load pkcs11 module\n");
+        LogPrintf("Failed to load pkcs11 module: %s\n", pkcs11module);
         return;
     }
 
@@ -191,9 +195,10 @@ void InitSmartCard()
         return;
     }
 
-    rv = p11->C_Login(session, CKU_USER,(CK_UTF8CHAR *) GetArg("-cvnpin", "").c_str(), 6);
+    string strCardPIN = GetArg("-cvnpin", "");
+    rv = p11->C_Login(session, CKU_USER,(CK_UTF8CHAR *) strCardPIN.c_str(), strCardPIN.size());
     if (rv != CKR_OK) {
-        LogPrintf("ERROR: could not log into card (is the supplied pin correct?)\n");
+        LogPrintf("ERROR: could not log into smart card (is the supplied -cvnpin correct?)\n");
         cleanup_p11();
         return;
     }

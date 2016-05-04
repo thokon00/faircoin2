@@ -489,6 +489,9 @@ bool CheckForDuplicateChainAdmins(const CBlock& block)
     return true;
 }
 
+typedef map<uint256, vector<CCvnInfo> > CachedCvnType;
+static CachedCvnType mapChachedCVNInfoBlocks;
+
 static uint32_t FindNewlyAddedCVN(const CBlockIndex* pindexStart)
 {
     const CChainParams& chainparams = Params();
@@ -499,13 +502,21 @@ static uint32_t FindNewlyAddedCVN(const CBlockIndex* pindexStart)
     // find the CVN that was added last
     for (const CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev) {
         if (pindex->nVersion & CBlock::CVN_PAYLOAD) {
-            CBlock block;
-            if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus())) {
-                LogPrintf("FATAL: Failed to read block %s\n", pindex->GetBlockHash().ToString());
-                return 0;
+            CachedCvnType::iterator it = mapChachedCVNInfoBlocks.find(pindex->GetBlockHash());
+            vector<CCvnInfo> vCvnInfoFromBlock;
+
+            if (it == mapChachedCVNInfoBlocks.end()) {
+                CBlock block;
+                if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus())) {
+                    LogPrintf("FATAL: Failed to read block %s\n", pindex->GetBlockHash().ToString());
+                    return 0;
+                }
+                mapChachedCVNInfoBlocks[pindex->GetBlockHash()] = block.vCvns;
+            } else {
+                vCvnInfoFromBlock = it->second;
             }
 
-            BOOST_FOREACH(const CCvnInfo& cvn, block.vCvns)
+            BOOST_FOREACH(const CCvnInfo& cvn, vCvnInfoFromBlock)
             {
                 if (cvn.nHeightAdded == (uint32_t)pindex->nHeight) {
                     nLatestAdded = cvn.nNodeId;
@@ -608,20 +619,13 @@ static const string CreateSignerIdList(const std::vector<CCvnSignature>& vSignat
  */
 uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTimeToTest)
 {
-    uint32_t nNextCreatorId = FindNewlyAddedCVN(pindexStart);
-
-    if (nNextCreatorId) {
-        LogPrintf("CheckNextBlockCreator : CVN 0x%08x needs to be bootstrapped\n", nNextCreatorId);
-        return nNextCreatorId;
-    }
-
     TimeWeightSetType sCheckedNodes;
     sCheckedNodes.reserve(mapCVNs.size());
-    std::vector<uint32_t> vCreatorCandidates;
-    std::vector<TimeWeightSetType> vLastSignatures;
+    vector<uint32_t> vCreatorCandidates;
+    vector<TimeWeightSetType> vLastSignatures;
     uint32_t nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures;
 
-    // first create a list of creator candidates
+    // create a list of creator candidates
     for (const CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev) {
         if (sCheckedNodes.insert(pindex->nCreatorId).second)
             vCreatorCandidates.push_back(pindex->nCreatorId);
@@ -633,6 +637,13 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
     }
     nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures; // reset
 
+    uint32_t nNextCreatorId = FindNewlyAddedCVN(pindexStart);
+
+    if (nNextCreatorId) {
+        LogPrintf("CheckNextBlockCreator : CVN 0x%08x needs to be bootstrapped\n", nNextCreatorId);
+        vCreatorCandidates.push_back(nNextCreatorId);
+    }
+
     // the last in the list has the highest time-weight
     CandidateIterator itCandidates = vCreatorCandidates.rbegin();
 
@@ -642,8 +653,8 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
     }
 
     uint32_t nCandidateOffset = FindCandidateOffset(pindexStart->nTime, nTimeToTest);
-    if (nCandidateOffset > vCreatorCandidates.size()) {
-        LogPrintf("CheckNextBlockCreator : WARN, CandidateOffset exceeds limits: %u > %u\n", nCandidateOffset, vCreatorCandidates.size());
+    if (nCandidateOffset >= vCreatorCandidates.size()) {
+        LogPrintf("CheckNextBlockCreator : WARN, CandidateOffset exceeds limits: %u >= %u\n", nCandidateOffset, vCreatorCandidates.size());
         nCandidateOffset = vCreatorCandidates.size() - 1;
     }
 
@@ -651,11 +662,15 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
     LogPrintf("CheckNextBlockCreator : continue with candidate offset %u\n", nCandidateOffset);
     uint32_t i =0;
     BOOST_FOREACH(const TimeWeightSetType set, vLastSignatures) {
+        LogPrintf("set #%02u: ", i++);
+        bool fFirst = true;
         BOOST_FOREACH(const uint32_t signerId, set) {
-            LogPrintf("set #%02u: signer 0x%08x\n", i++, signerId);
+            LogPrintf("%s0x%08x", fFirst ? "" : ", ", signerId);
+            if (fFirst)
+                fFirst = false;
         }
+        LogPrintf("\n");
     }
-    LogPrintf("done printing sets\n");
 #endif
 
     uint32_t maxLoop = vCreatorCandidates.size() + 1;
@@ -690,21 +705,23 @@ void static CCVNSignerThread(const CChainParams& chainparams, const uint32_t& nN
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
     RenameThread("CVN-signer");
 
-#if 0
-    while (IsInitialBlockDownload() && !ShutdownRequested())
+    while (IsInitialBlockDownload() && !ShutdownRequested()) {
+        LogPrintf("Block chain download in progress. Waiting...");
         MilliSleep(1000);
-#endif
+    }
 
     uint32_t nNextCreator = CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime());
 
     while (!nNextCreator && !ShutdownRequested()) {
+        LogPrintf("Next creator ID not available. Waiting...");
         MilliSleep(1000);
         nNextCreator = CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime());
     }
 
     uint32_t nLastCreator = nNextCreator;
+    CBlockIndex* pindexLastTip = chainActive.Tip();
 
-    SendCVNSignature(chainActive.Tip());
+    SendCVNSignature(pindexLastTip);
     try {
         while (true) {
             uint32_t nWait = 5 * 2; // 5 seconds
@@ -715,7 +732,7 @@ void static CCVNSignerThread(const CChainParams& chainparams, const uint32_t& nN
             CBlockIndex* pindexPrev = chainActive.Tip();
 
             nNextCreator = CheckNextBlockCreator(pindexPrev, GetAdjustedTime());
-            if (nLastCreator != nNextCreator) {
+            if (nLastCreator != nNextCreator || pindexLastTip != chainActive.Tip()) {
                 srand(pindexPrev->nTime);
                 uint32_t nRandomWait = rand() % 10 + 1;
 
@@ -725,12 +742,7 @@ void static CCVNSignerThread(const CChainParams& chainparams, const uint32_t& nN
                 LogPrintf("CCVNSignerThread : sending sig for prev block: %s\n", chainActive.Tip()->GetBlockHash().ToString());
                 SendCVNSignature(chainActive.Tip());
                 nLastCreator = nNextCreator;
-
-                // clear old entries in mapCvnSigs
-                LOCK(cs_mapCvnSigs);
-                for (const CBlockIndex* pindex = pindexPrev; pindex; pindex = pindex->pprev) {
-
-                }
+                pindexLastTip = chainActive.Tip();
             }
         }
     }

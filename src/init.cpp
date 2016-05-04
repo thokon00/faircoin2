@@ -1171,7 +1171,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                 return InitError("invalid CVN private key supplied\n");
             }
         }
-#if 0
+#if 1
         CBlock genesis = chainparams.GenesisBlock();
         UpdateCvnInfo(&genesis);
         UpdateChainAdmins(&genesis);
