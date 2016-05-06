@@ -131,6 +131,7 @@ public:
         fMineBlocksOnDemand = false;
         fTestnetToBeDeprecatedFieldRPC = false;
 
+#if 0
         checkpointData = (CCheckpointData) {
             boost::assign::map_list_of
             ( 0, uint256S("49443ff1f4876f972e130e19c0969794aefd7aeb57ec65cdda386eea22a36cb2")),
@@ -139,6 +140,7 @@ public:
                         //   (the tx=... number in the SetBestChain debug.log lines)
             0.0     // * estimated number of transactions per day after checkpoint
         };
+#endif
     }
 };
 static CMainParams mainParams;

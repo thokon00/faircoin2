@@ -4200,6 +4200,8 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
         return mapBlockIndex.count(inv.hash);
     case MSG_CVN_SIGNATURE:
         return mapCvnSigs.count(inv.hash);
+    case MSG_POC_CHAIN_DATA:
+        return mapChainData.count(inv.hash);
     }
     // Don't know what it is, just say we already got one
     return true;
@@ -5775,10 +5777,10 @@ bool SendMessages(CNode* pto)
             vInvWait.reserve(pto->vInventoryToSend.size());
             BOOST_FOREACH(const CInv& inv, pto->vInventoryToSend)
             {
-                if ((inv.type == MSG_TX || inv.type == MSG_CVN_SIGNATURE) && pto->filterInventoryKnown.contains(inv.hash))
+                if ((inv.type == MSG_TX || inv.type == MSG_CVN_SIGNATURE || inv.type == MSG_POC_CHAIN_DATA) && pto->filterInventoryKnown.contains(inv.hash))
                     continue;
 
-                // trickle out tx inv to protect privacy
+                // trickle out tx inv to protect privacy (don't tickle MSG_POC_CHAIN_DATA)
                 if ((inv.type == MSG_TX || inv.type == MSG_CVN_SIGNATURE) && !fSendTrickle)
                 {
                     // 1/4 of tx invs blast to all immediately

@@ -432,7 +432,7 @@ static bool AddAdminSignatures(CChainDataMsg &msg, const UniValue& sigs)
     return CheckAdminSignatures(msg.GetHash(), msg.vAdminSignatures);
 }
 
-static void AddCvnInfoToBlock(CChainDataMsg &msg, const uint32_t nNodeId, const uint32_t nHeightAdded, const vector<unsigned char> vPubKey)
+static void AddCvnInfoToMsg(CChainDataMsg &msg, const uint32_t nNodeId, const uint32_t nHeightAdded, const vector<unsigned char> vPubKey)
 {
     msg.nPayload |= CChainDataMsg::CVN_PAYLOAD;
     msg.vCvns.resize(mapCVNs.size() + 1);
@@ -447,7 +447,7 @@ static void AddCvnInfoToBlock(CChainDataMsg &msg, const uint32_t nNodeId, const 
     msg.vCvns[index] = cvn;
 }
 
-static void AddChainAdminToBlock(CChainDataMsg &msg, const uint32_t nAdminId, const vector<unsigned char> vPubKey)
+static void AddChainAdminToMsg(CChainDataMsg &msg, const uint32_t nAdminId, const vector<unsigned char> vPubKey)
 {
     msg.nPayload |= CChainDataMsg::CHAIN_ADMINS_PAYLOAD;
     msg.vChainAdmins.resize(mapChainAdmins.size() + 1);
@@ -462,7 +462,7 @@ static void AddChainAdminToBlock(CChainDataMsg &msg, const uint32_t nAdminId, co
     msg.vChainAdmins[index] = admin;
 }
 
-static void AddDynParamsToBlock(CChainDataMsg& msg, UniValue jsonParams)
+static void AddDynParamsToMsg(CChainDataMsg& msg, UniValue jsonParams)
 {
     LogPrintf("AddDynParamsToBlock : adding %u parameters\n", jsonParams.getKeys().size());
     msg.nPayload |= CChainDataMsg::CHAIN_PARAMETERS_PAYLOAD;
@@ -546,15 +546,13 @@ UniValue addcvn(const UniValue& params, bool fHelp)
 
     if (pubKey.IsFullyValid()) {
         if (fAddCvn)
-            AddCvnInfoToBlock(msg, nNodeId, chainActive.Tip()->nHeight + 1, vPubKey);
+            AddCvnInfoToMsg(msg, nNodeId, chainActive.Tip()->nHeight + 1, vPubKey);
         else
-            AddChainAdminToBlock(msg, nNodeId, vPubKey);
+            AddChainAdminToMsg(msg, nNodeId, vPubKey);
     }
 
-    LogPrintf("Test: %u\nTest: %u\n", (int)params[4].isObject(), (int)params[4].isNull());
-
     if (params[4].isObject() && !params[4].get_obj().getKeys().empty())
-        AddDynParamsToBlock(msg, params[4].get_obj());
+        AddDynParamsToMsg(msg, params[4].get_obj());
 
     // if no signatures are supplied we print out the CChainDataMsg's hash to sign
     if (!sigs.size())
@@ -575,8 +573,15 @@ UniValue addcvn(const UniValue& params, bool fHelp)
         result.push_back(Pair("address", address.ToString()));
     }
 
-    if (msg.HasChainParameters())
+    if (msg.HasChainParameters()) {
         LogPrintf("about to update dynamic chain parameters on the network\n   %s\n", msg.dynamicChainParams.ToString());
+        result.push_back(Pair("dynamicChainParams", msg.dynamicChainParams.ToString()));
+    }
+
+    if (msg.HasChainAdmins()) {
+        LogPrintf("about to add chain admin 0x%08x with pubKey %s to the network\n", nNodeId, HexStr(vPubKey));
+        result.push_back(Pair("pubKey", HexStr(vPubKey)));
+    }
 
     if (IsInitialBlockDownload())
         return "wait for block chain download to finish";
