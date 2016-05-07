@@ -55,6 +55,7 @@ void RemoveCvnSignatures(const uint256& hashPrevBlock);
 bool CvnValidateSignature(const CCvnSignature& signature, const uint256& hashPrevBlock, const uint32_t nCreatorId);
 bool CheckAdminSignatures(const uint256 hashAdminData, const vector<CCvnSignature> vAdminSignatures);
 void RelayChainData(const CChainDataMsg& msg);
+void RelayCvnSignature(const CCvnSignatureMsg& msg);
 
 uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTimeToTest);
 

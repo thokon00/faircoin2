@@ -4839,8 +4839,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         if (!AlreadyHave(inv)) {
             if (msg.hashPrev != chainActive.Tip()->GetBlockHash())
                 LogPrint("net", "received outdated CVN signature for block %s: %s\n", msg.hashPrev.ToString(), msg.ToString());
-            else
-                AddCvnSignature(msg.GetCvnSignature(), msg.hashPrev, msg.nCreatorId);
+            else {
+                if(AddCvnSignature(msg.GetCvnSignature(), msg.hashPrev, msg.nCreatorId)) {
+                    RelayCvnSignature(msg);
+                }
+            }
         } else
             LogPrint("net", "AlreadyHave sig %s\n", msg.hashPrev.ToString());
     }
