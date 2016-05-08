@@ -4816,7 +4816,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         mapAlreadyAskedFor.erase(inv);
 
         if (!AlreadyHave(inv)) {
-            if (!AddChainData(msg))
+            if (msg.hashPrevBlock != chainActive.Tip()->GetBlockHash())
+                LogPrint("net", "received outdated chain data for block %s: %s\n", msg.hashPrevBlock.ToString(), msg.ToString());
+            else if (!AddChainData(msg))
+                RelayChainData(msg);
+            else
                 LogPrint("net", "received invalid chain data %s\n", msg.ToString());
         } else
             LogPrint("net", "AlreadyHave chain data %s\n", hashData.ToString());
@@ -4839,10 +4843,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         if (!AlreadyHave(inv)) {
             if (msg.hashPrev != chainActive.Tip()->GetBlockHash())
                 LogPrint("net", "received outdated CVN signature for block %s: %s\n", msg.hashPrev.ToString(), msg.ToString());
-            else {
-                if(AddCvnSignature(msg.GetCvnSignature(), msg.hashPrev, msg.nCreatorId)) {
-                    RelayCvnSignature(msg);
-                }
+            else if(AddCvnSignature(msg.GetCvnSignature(), msg.hashPrev, msg.nCreatorId)) {
+                RelayCvnSignature(msg);
             }
         } else
             LogPrint("net", "AlreadyHave sig %s\n", msg.hashPrev.ToString());

@@ -690,11 +690,11 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
         }
     } while(nMinSuccessiveSignatures && maxLoop--);
 
-    if (maxLoop > 1000)
+    if (!maxLoop)
         LogPrintf("WARN: infinite loop detected. Aborted...\n");
 
     if (nNextCreatorId)
-        LogPrintf("NODE ID 0x%08x should create the next block #%u\n", nNextCreatorId, pindexStart->nHeight + 1);
+        LogPrint("cvn", "NODE ID 0x%08x should create the next block #%u\n", nNextCreatorId, pindexStart->nHeight + 1);
     else
         LogPrintf("ERROR, could not find any Node ID that should create the next block #%u\n", pindexStart->nHeight + 1);
 
