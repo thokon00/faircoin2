@@ -628,10 +628,8 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
         if (sCheckedNodes.insert(pindex->nCreatorId).second)
             vCreatorCandidates.push_back(pindex->nCreatorId);
 
-        if (nMinSuccessiveSignatures) {
-            nMinSuccessiveSignatures--;
+        if (nMinSuccessiveSignatures--)
             AddToSigSets(vLastSignatures, pindex->vSignatures);
-        }
     }
     nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures; // reset
 
@@ -671,9 +669,10 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
     }
 #endif
 
-    uint32_t maxLoop = vCreatorCandidates.size() + 1;
+    itCandidates += nCandidateOffset;
+    uint32_t maxLoop = 1100;
     do {
-        uint32_t nCreatorCandidate = *(itCandidates += nCandidateOffset);
+        uint32_t nCreatorCandidate = *(itCandidates ++);
 
         // check if the candidate signed the last nMinSuccessiveSignatures blocks
         if (HasSignedLastBlocks(vLastSignatures, nCreatorCandidate, nMinSuccessiveSignatures)) {
@@ -684,10 +683,15 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
         // if we did not find a candidate who signed enough successive blocks we lower
         // our requirement to avoid the block chain become stalled
         if (itCandidates == vCreatorCandidates.rend()) {
+            itCandidates = vCreatorCandidates.rbegin();
+            itCandidates += nCandidateOffset;
             nMinSuccessiveSignatures--;
             LogPrintf("CheckNextBlockCreator: WARNING, could not find a CVN that signed enough successive blocks. Lowering number of required sigs to %u\n", nMinSuccessiveSignatures);
         }
     } while(nMinSuccessiveSignatures && maxLoop--);
+
+    if (maxLoop > 1000)
+        LogPrintf("WARN: infinite loop detected. Aborted...\n");
 
     if (nNextCreatorId)
         LogPrintf("NODE ID 0x%08x should create the next block #%u\n", nNextCreatorId, pindexStart->nHeight + 1);
