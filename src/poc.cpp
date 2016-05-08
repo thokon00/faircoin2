@@ -708,14 +708,14 @@ void static CCVNSignerThread(const CChainParams& chainparams, const uint32_t& nN
     RenameThread("CVN-signer");
 
     while (IsInitialBlockDownload() && !ShutdownRequested()) {
-        LogPrintf("Block chain download in progress. Waiting...");
+        LogPrintf("Block chain download in progress. Waiting...\n");
         MilliSleep(1000);
     }
 
     uint32_t nNextCreator = CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime());
 
     while (!nNextCreator && !ShutdownRequested()) {
-        LogPrintf("Next creator ID not available. Waiting...");
+        LogPrintf("Next creator ID not available. Waiting...\n");
         MilliSleep(1000);
         nNextCreator = CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime());
     }
