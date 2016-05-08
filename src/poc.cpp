@@ -496,7 +496,7 @@ static uint32_t FindNewlyAddedCVN(const CBlockIndex* pindexStart)
 {
     const CChainParams& chainparams = Params();
 
-    uint32_t nLatestAdded = 0;
+    uint32_t nLastAddedNode = 0;
     const CBlockIndex* pindexFound = NULL;
 
     // find the CVN that was added last
@@ -519,32 +519,30 @@ static uint32_t FindNewlyAddedCVN(const CBlockIndex* pindexStart)
             BOOST_FOREACH(const CCvnInfo& cvn, vCvnInfoFromBlock)
             {
                 if (cvn.nHeightAdded == (uint32_t)pindex->nHeight) {
-                    nLatestAdded = cvn.nNodeId;
+                    nLastAddedNode = cvn.nNodeId;
                     pindexFound = pindex;
 #if POC_DEBUG
-                    LogPrintf("last added CVN: 0x%08x at height: %u\n%s\n", nLatestAdded, pindex->nHeight, cvn.ToString());
+                    LogPrintf("last added CVN: 0x%08x at height: %u\n%s\n", nLastAddedNode, pindex->nHeight, cvn.ToString());
 #endif
                     break;
                 }
             };
 
-            if (nLatestAdded)
+            if (nLastAddedNode)
                 break;
         }
     }
 
-    if (!nLatestAdded || !pindexFound) // should not happen
+    if (!nLastAddedNode || !pindexFound) // should not happen
         return 0;
 
+    // if the last added node has created a block there is no new CVN that needs to be bootstrapped
     for (const CBlockIndex* pindex = pindexStart; pindex && pindex != pindexFound; pindex = pindex->pprev) {
-        BOOST_FOREACH(const CCvnSignature& sig, pindex->vSignatures) {
-            // if the latest added node has signed there is no new CVN that needs to be bootstrapped
-            if (sig.nSignerId == nLatestAdded)
-                return 0;
-        }
+        if (pindex->nCreatorId == nLastAddedNode)
+            return 0;
     }
 
-    return nLatestAdded;
+    return nLastAddedNode;
 }
 
 static uint32_t FindCandidateOffset(const uint64_t nPrevBlockTime, const int64_t nTimeToTest)
