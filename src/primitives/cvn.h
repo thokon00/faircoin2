@@ -188,7 +188,6 @@ public:
     // for a node to create the next block it needs to have co-signed
     // the last nMinSuccessiveSignatures blocks
     uint32_t nMinSuccessiveSignatures;
-    vector<unsigned char> vPubKey;
 
     CDynamicChainParams()
     {
@@ -207,7 +206,6 @@ public:
         READWRITE(nBlockSpacingGracePeriod);
         READWRITE(nDustThreshold);
         READWRITE(nMinSuccessiveSignatures);
-        READWRITE(vPubKey);
     }
 
     void SetNull()
@@ -219,7 +217,6 @@ public:
         nBlockSpacingGracePeriod = 0;
         nDustThreshold = 0;
         nMinSuccessiveSignatures = 0;
-        vPubKey.clear();
     }
 
     uint256 GetHash() const;
