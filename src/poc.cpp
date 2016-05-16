@@ -651,13 +651,13 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
     uint32_t nNextCreatorId = FindNewlyAddedCVN(pindexStart);
 
     if (nNextCreatorId) {
-        LogPrintf("CheckNextBlockCreator : CVN 0x%08x (%u sigs) needs to be bootstrapped\n", nNextCreatorId, mapLastSignatures[nNextCreatorId]);
+        LogPrint("cvn", "CheckNextBlockCreator : CVN 0x%08x (%u sigs) needs to be bootstrapped\n", nNextCreatorId, mapLastSignatures[nNextCreatorId]);
         vCreatorCandidates.push_back(nNextCreatorId);
     } else if (vCreatorCandidates.size() < nRegisteredCVNs) {
         nNextCreatorId = FindDormantNode(pindexStart, mapLastSignatures, setCreatorCandidates, dynParams.nMinSuccessiveSignatures);
 
         if (nNextCreatorId) {
-            LogPrintf("CheckNextBlockCreator : dormant CVN 0x%08x (%u sigs) detected - activating...\n", nNextCreatorId, mapLastSignatures[nNextCreatorId]);
+            LogPrint("cvn", "CheckNextBlockCreator : dormant CVN 0x%08x (%u sigs) detected - activating...\n", nNextCreatorId, mapLastSignatures[nNextCreatorId]);
             vCreatorCandidates.push_back(nNextCreatorId);
         }
     }
