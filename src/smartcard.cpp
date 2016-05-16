@@ -7,9 +7,11 @@
 #include "utilstrencodings.h"
 #include "primitives/block.h"
 #include "poc.h"
+#include "cvn.h"
 
 #include "pkcs11/pkcs11.h"
 #include <secp256k1.h>
+#include <openssl/ssl.h>
 
 bool fSmartCardUnlocked = false;
 
@@ -20,14 +22,16 @@ static CK_FUNCTION_LIST_PTR p11 = NULL;
 static CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
 static CK_OBJECT_HANDLE key = CK_INVALID_HANDLE;
 static CK_MECHANISM mech;
-static CPubKey smartCardPubKey;
+
+#define P(x) #x
+#define USE_OPENSC_MODULE_PATH(x) P(x)
 
 #if defined(WIN32)
 static std::string defaultPkcs11ModulePath = "";
 #elif defined(MAC_OSX)
 static std::string defaultPkcs11ModulePath = "";
 #else
-static std::string defaultPkcs11ModulePath = "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so";
+static std::string defaultPkcs11ModulePath = USE_OPENSC_MODULE_PATH(USE_OPENSC) "/target/lib/opensc-pkcs11.so";
 #endif
 
 static void cleanup_p11()
@@ -38,22 +42,22 @@ static void cleanup_p11()
         C_UnloadModule(module);
 }
 
-static unsigned char * getEC_POINT(CK_SESSION_HANDLE sess, CK_OBJECT_HANDLE obj, CK_ULONG_PTR pulCount)
+static unsigned char* getAttribute(CK_SESSION_HANDLE sess, CK_OBJECT_HANDLE obj, CK_ULONG_PTR pulCount, CK_ATTRIBUTE_TYPE type)
 {
-    CK_ATTRIBUTE attr = { CKA_EC_POINT, NULL, 0 };
+    CK_ATTRIBUTE attr = { type, NULL, 0 };
     CK_RV rv;
 
     rv = p11->C_GetAttributeValue(sess, obj, &attr, 1);
     if (rv == CKR_OK) {
         if (!(attr.pValue = calloc(1, attr.ulValueLen + 1))) {
-            LogPrintf("getEC_POINT: out of memory in getEC_PONIT\n");
+            LogPrintf("getAttribute: out of memory\n");
             return NULL;
         }
         rv = p11->C_GetAttributeValue(sess, obj, &attr, 1);
         if (pulCount)
             *pulCount = attr.ulValueLen;
     } else {
-        LogPrintf("getEC_POINT: ERROR, C_GetAttributeValue %u\n", rv);
+        LogPrintf("getAttribute: ERROR, C_GetAttributeValue %u\n", rv);
     }
     return (unsigned char *)attr.pValue;
 }
@@ -114,8 +118,8 @@ bool CvnSignWithSmartCard(const uint256& hashUnsignedBlock, CCvnSignature& signa
     CK_ULONG nSigLen = 64;
     secp256k1_ecdsa_signature sig;
 
-    if (cvnInfo.vPubKey != smartCardPubKey) {
-        LogPrintf("CvnSignWithSmartCard : key does not match node ID\n  CVN pubkey: %s\n CARD pubkey: %s\n", HexStr(cvnInfo.vPubKey), HexStr(smartCardPubKey));
+    if (cvnInfo.vPubKey != cvnPubKey) {
+        LogPrintf("CvnSignWithSmartCard : key does not match node ID\n  CVN pubkey: %s\n CARD pubkey: %s\n", HexStr(cvnInfo.vPubKey), HexStr(cvnPubKey));
         return false;
     }
 
@@ -150,7 +154,7 @@ bool CvnSignWithSmartCard(const uint256& hashUnsignedBlock, CCvnSignature& signa
         return false;
     }
 
-#if POC_DEBUG
+#ifdef SMARTCARD_DEBUG
     LogPrintf("CvnSignWithSmartCard : OK\n  Hash: %s\n  node: 0x%08x\n  pubk: %s\n   sig: %s\n",
             hashUnsignedBlock.ToString(), signature.nSignerId,
             HexStr(cvnInfo.vPubKey),
@@ -159,15 +163,16 @@ bool CvnSignWithSmartCard(const uint256& hashUnsignedBlock, CCvnSignature& signa
     return true;
 }
 
-void InitSmartCard()
+X509* InitCVNWithSmartCard()
 {
     CK_OBJECT_HANDLE tmpPubKey = CK_INVALID_HANDLE;
+    CK_OBJECT_HANDLE tmpCertificate = CK_INVALID_HANDLE;
     CK_BYTE opt_object_id[1];
     CK_RV rv;
 
     if (GetArg("-cvnpin", "").empty()) {
         LogPrintf("ERROR: -cvnpin not supplied.\n");
-        return;
+        return NULL;
     }
     std::string pkcs11module = GetArg("-pkcs11module", defaultPkcs11ModulePath);
     static const char * opt_module = pkcs11module.c_str();
@@ -175,7 +180,7 @@ void InitSmartCard()
     module = C_LoadModule(opt_module, &p11);
     if (module == NULL) {
         LogPrintf("Failed to load pkcs11 module: %s\n", pkcs11module);
-        return;
+        return NULL;
     }
 
     rv = p11->C_Initialize(NULL);
@@ -183,7 +188,7 @@ void InitSmartCard()
         LogPrintf("library has already been initialized\n");
     } else if (rv != CKR_OK) {
         LogPrintf("error initializing pkcs11 framework\n");
-        return;
+        return NULL;
     }
 
     LogPrintf("OpenSC successfully initialized using pkcs11 module at %s\n", opt_module);
@@ -192,7 +197,7 @@ void InitSmartCard()
     if (rv != CKR_OK) {
         LogPrintf("ERROR: could not open session: %04x\n", (unsigned int)rv);
         cleanup_p11();
-        return;
+        return NULL;
     }
 
     string strCardPIN = GetArg("-cvnpin", "");
@@ -200,37 +205,58 @@ void InitSmartCard()
     if (rv != CKR_OK) {
         LogPrintf("ERROR: could not log into smart card (is the supplied -cvnpin correct?)\n");
         cleanup_p11();
-        return;
+        return NULL;
     }
 
-    opt_object_id[0] = GetArg("-cvnkeyid", 1);
+    opt_object_id[0] = GetArg("-cvnkeyid", 3);
     if (find_object(session, CKO_PRIVATE_KEY, &key, opt_object_id, 1, 0) != 1){
         LogPrintf("ERROR: Private key not found on card (is the -cvnkeyid correct?)\n");
         cleanup_p11();
-        return;
+        return NULL;
     }
 
     if (find_object(session, CKO_PUBLIC_KEY, &tmpPubKey, opt_object_id, 1, 0) != 1){
         LogPrintf("ERROR: Public key not found on card (is the -cvnkeyid correct?)\n");
         cleanup_p11();
-        return;
+        return NULL;
     }
 
-    CK_ULONG nPubKeySize = 0;
-    unsigned char *pPubKey = getEC_POINT(session, tmpPubKey, &nPubKeySize);
+    CK_ULONG nAttrValueSize = 0;
+    unsigned char *pPubKey = getAttribute(session, tmpPubKey, &nAttrValueSize, CKA_EC_POINT);
 
     if (!pPubKey) {
         LogPrintf("ERROR: Public key not found on card (is the -cvnkeyid correct?)\n");
         cleanup_p11();
-        return;
+        return NULL;
     }
 
-    smartCardPubKey.Set(&pPubKey[2], pPubKey + nPubKeySize);
+    cvnPubKey.Set(&pPubKey[2], pPubKey + nAttrValueSize);
     free(pPubKey);
+
+    opt_object_id[0] = GetArg("-cvncertid", 5);
+    if (find_object(session, CKO_CERTIFICATE, &tmpCertificate, opt_object_id, 1, 0) != 1){
+        LogPrintf("ERROR: Certificate not found on card (is the -cvncertid correct?)\n");
+        cleanup_p11();
+        return NULL;
+    }
+
+    nAttrValueSize = 0;
+    unsigned char *pCert = getAttribute(session, tmpCertificate, &nAttrValueSize, CKA_VALUE);
+    if (!pCert) {
+        LogPrintf("ERROR: Certificate not found on card (is the -cvnkeyid correct?)\n");
+        cleanup_p11();
+        return NULL;
+    }
 
     memset(&mech, 0, sizeof(mech));
     mech.mechanism = CKM_ECDSA;
     fSmartCardUnlocked = true;
 
-    LogPrintf("Successfully logged into smart card\n");
+    const unsigned char *pCertStore = pCert;
+    X509* x509Certificate = d2i_X509(NULL, &pCertStore, nAttrValueSize);
+
+    LogPrintf("Smart card successfully initialized\n");
+    free(pCert);
+
+    return x509Certificate;
 }

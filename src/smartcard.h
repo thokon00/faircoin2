@@ -7,7 +7,7 @@
 
 #include "primitives/block.h"
 
-void InitSmartCard();
+X509* InitCVNWithSmartCard();
 bool CvnSignWithSmartCard(const uint256& hashUnsignedBlock, CCvnSignature& signature, const CCvnInfo& cvnInfo);
 
 extern bool fSmartCardUnlocked;

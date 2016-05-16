@@ -117,6 +117,7 @@ BITCOIN_CORE_H = \
   consensus/validation.h \
   core_io.h \
   core_memusage.h \
+  cvn.h \
   hash.h \
   httprpc.h \
   httpserver.h \
@@ -203,6 +204,7 @@ libbitcoin_server_a_SOURCES = \
   bloom.cpp \
   chain.cpp \
   checkpoints.cpp \
+  cvn.cpp \
   httprpc.cpp \
   httpserver.cpp \
   init.cpp \

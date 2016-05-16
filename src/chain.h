@@ -247,10 +247,27 @@ public:
         return pbegin[(pend - pbegin)/2];
     }
 
+    std::string GetPayloadString() const
+    {
+        std::stringstream payload;
+
+        if (nVersion & CBlock::TX_PAYLOAD)
+            payload << "tx";
+        if (nVersion & CBlock::CVN_PAYLOAD)
+            payload << strprintf("%scvninfo", (payload.tellp() > 0) ? "|" : "");
+        if (nVersion & CBlock::CHAIN_PARAMETERS_PAYLOAD)
+            payload << strprintf("%sparams", (payload.tellp() > 0) ? "|" : "");
+        if (nVersion & CBlock::CHAIN_ADMINS_PAYLOAD)
+            payload << strprintf("%sadmins", (payload.tellp() > 0) ? "|" : "");
+
+        return payload.str();
+    }
+
     std::string ToString() const
     {
-        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, nCreatorId=%u, merkle=%s, hashBlock=%s, signatures=%u, adminSignatures=%u)",
+        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, pl=%s, nCreatorId=%u, merkle=%s, hashBlock=%s, signatures=%u, adminSignatures=%u)",
             pprev, nHeight, nCreatorId,
+            GetPayloadString(),
             hashMerkleRoot.ToString(),
             GetBlockHash().ToString(),
             vSignatures.size(),

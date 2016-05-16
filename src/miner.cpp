@@ -29,6 +29,7 @@
 #include "wallet/wallet.h"
 #include "base58.h"
 #include "poc.h"
+#include "cvn.h"
 
 #ifdef USE_OPENSC
 #include "smartcard.h"
@@ -96,8 +97,8 @@ static CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CSc
 
     // Largest block you're willing to create:
     unsigned int nBlockMaxSize = GetArg("-blockmaxsize", DEFAULT_BLOCK_MAX_SIZE);
-    // Limit to between 1K and MAX_BLOCK_SIZE-1K for sanity:
-    nBlockMaxSize = std::max((unsigned int)1000, std::min((unsigned int)(MAX_BLOCK_SIZE-1000), nBlockMaxSize));
+    // Limit to between 1K and MAX_BLOCK_SIZE-7K for sanity:
+    nBlockMaxSize = std::max((unsigned int)1000, std::min((unsigned int)(MAX_BLOCK_SIZE-7000), nBlockMaxSize));
 
     // How much of the block should be dedicated to high-priority transactions,
     // included regardless of the fees they pay
@@ -360,26 +361,15 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
     SetThreadPriority(THREAD_PRIORITY_NORMAL);
     RenameThread("certified-validation-node");
     RunCVNSignerThread(chainparams, nNodeId);
-    bool fBoostrap = chainActive.Tip()->GetBlockHash() == chainparams.GetConsensus().hashGenesisBlock;
-
-    if (fBoostrap) {
-        CCvnSignature signature;
-        if (!CvnSign(chainparams.GetConsensus().hashGenesisBlock, signature, GENESIS_NODE_ID, GENESIS_NODE_ID)) {
-            LogPrintf("SendCVNSignature : %u could not sign block\n", nCvnNodeId);
-            return;
-        }
-
-        AddCvnSignature(signature, chainparams.GetConsensus().hashGenesisBlock, GENESIS_NODE_ID);
-    }
 
 #ifdef USE_OPENSC
     // wait for smartcard init
-    if (GetBoolArg("-usesmartcard", false))
+    if (GetArg("-cvn", "") == "card")
         while (!fSmartCardUnlocked && !ShutdownRequested())
-            MilliSleep(500);
+            MilliSleep(1000);
 #endif
 
-    while (IsInitialBlockDownload() && !fBoostrap && !ShutdownRequested())
+    while (IsInitialBlockDownload() && !ShutdownRequested())
         MilliSleep(1000);
 
     LogPrintf("Certified validation node started for node ID 0x%08x\n", nNodeId);
@@ -418,33 +408,12 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
                 MilliSleep(500);
             }
 
-#if 0
-            {
-                LOCK(cs_mapCvnSigs);
-                uint256 hashTip = chainActive.Tip()->GetBlockHash();
-                CvnSigCreatorType& sigsForHashPrev = mapCvnSigs[hashTip];
-#if POC_DEBUG
-                LogPrintf("list of tips in sig map\n");
-                BOOST_FOREACH(CvnSigMapType::value_type& map4hash, mapCvnSigs) {
-                    LogPrintf("  %s\n", map4hash.first.ToString());
-                    LogPrintf("  list of sig in tip map\n");
-                    BOOST_FOREACH(CvnSigCreatorType::value_type& cvn, map4hash.second) {
-                        LogPrintf("    %u : %s\n", cvn.first, cvn.second.ToString());
-                    }
-                }
-#endif
-                if (!sigsForHashPrev.count(nCvnNodeId)) {
-                    LogPrintf("could not find signature for tip: %s, resending...\n", hashTip.ToString());
-                    SendCVNSignature(chainActive.Tip());
-                }
-            }
-#endif
-
             // wait for block spacing
             if (chainActive.Tip()->nTime + dynParams.nBlockSpacing > GetAdjustedTime())
                 continue;
 
-            if (CheckNextBlockCreator(chainActive.Tip(), GetAdjustedTime()) != nNodeId) {
+            int64_t nCurrentTime = GetAdjustedTime();
+            if (CheckNextBlockCreator(chainActive.Tip(), nCurrentTime) != nNodeId) {
                 nExtraNonce++; // create some 'randomness' for the coinbase
                 continue;
             }
@@ -464,6 +433,7 @@ void static CertifiedValidationNode(const CChainParams& chainparams, const uint3
             UpdateCoinbase(pblock, pindexPrev, nExtraNonce);
 
             pblock->nCreatorId = nNodeId;
+            pblock->nTime = nCurrentTime;
 
             uint256 hashBlock = pblock->hashPrevBlock;
             {

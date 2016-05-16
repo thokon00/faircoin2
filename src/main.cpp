@@ -2277,10 +2277,12 @@ void static UpdateTip(CBlockIndex *pindexNew) {
     nTimeBestReceived = GetTime();
     mempool.AddTransactionsUpdated(1);
 
-    LogPrintf("%s: new best=%s  height=%d  log2_work=%.8g  tx=%lu  date=%s progress=%f  cache=%.1fMiB(%utx)\n", __func__,
-      chainActive.Tip()->GetBlockHash().ToString(), chainActive.Height(), log(chainActive.Tip()->nChainWork.getdouble())/log(2.0), (unsigned long)chainActive.Tip()->nChainTx,
+    LogPrintf("%s: new best=%s height=%d creator=%08x pl=%s log2_work=%.8g tx=%lu ate=%s progress=%f cache=%.1fMiB(%utx) sigs=%u\n", __func__,
+      chainActive.Tip()->GetBlockHash().ToString(), chainActive.Height(), pindexNew->nCreatorId, pindexNew->GetPayloadString(),
+      log(chainActive.Tip()->nChainWork.getdouble())/log(2.0), (unsigned long)chainActive.Tip()->nChainTx,
       DateTimeStrFormat("%Y-%m-%d %H:%M:%S", chainActive.Tip()->GetBlockTime()),
-      Checkpoints::GuessVerificationProgress(chainParams.Checkpoints(), chainActive.Tip()), pcoinsTip->DynamicMemoryUsage() * (1.0 / (1<<20)), pcoinsTip->GetCacheSize());
+      Checkpoints::GuessVerificationProgress(chainParams.Checkpoints(), chainActive.Tip()), pcoinsTip->DynamicMemoryUsage() * (1.0 / (1<<20)),
+      pcoinsTip->GetCacheSize(), pindexNew->vSignatures.size());
 
     cvBlockChange.notify_all();
 
@@ -2905,7 +2907,7 @@ bool CheckBlockHeader(const CBlockHeader& block, CValidationState& state, bool f
 
     if (fCheckPOC && !CheckProofOfCooperation(block, Params().GetConsensus()))
         return state.DoS(50, error("CheckBlockHeader(): proof of cooperation failed"),
-                         REJECT_INVALID, "high-hash");
+                         REJECT_INVALID, "poc-failed");
 
     // Check timestamp
     if (block.GetBlockTime() > GetAdjustedTime() + dynParams.nBlockSpacing + 30)
@@ -3038,7 +3040,7 @@ bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& sta
 {
     //const Consensus::Params& consensusParams = Params().GetConsensus();
     //TODO: Check proof of cooperation
-    LogPrintf("ContextualCheckBlockHeader : checking # of sigs: Prev: %u, This: %u\n", pindexPrev->vSignatures.size(), block.vSignatures.size());
+    LogPrint("cvn", "ContextualCheckBlockHeader : checking # of sigs: Prev: %u, This: %u\n", pindexPrev->vSignatures.size(), block.vSignatures.size());
     if (fCheckSignatures && pindexPrev->vSignatures.size() > 1 && ((float)pindexPrev->vSignatures.size() / (float)2 >= (float)block.vSignatures.size())) {
         return state.Invalid(error("%s: not enough signatures available. Prev: %u, This: %u", __func__,
                 pindexPrev->vSignatures.size(), block.vSignatures.size()),
@@ -4781,7 +4783,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 pindex = chainActive.Next(pindex);
         }
 
-        // we must use CBlocks, as CBlockHeaders won't include the 0x00 nTx count at the end
         vector<CBlockHeader> vHeaders;
         int nLimit = MAX_HEADERS_RESULTS;
         LogPrint("net", "getheaders %d to %s from peer=%d\n", (pindex ? pindex->nHeight : -1), hashStop.ToString(), pfrom->id);
@@ -4818,7 +4819,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         if (!AlreadyHave(inv)) {
             if (msg.hashPrevBlock != chainActive.Tip()->GetBlockHash())
                 LogPrint("net", "received outdated chain data for block %s: %s\n", msg.hashPrevBlock.ToString(), msg.ToString());
-            else if (!AddChainData(msg))
+            else if (AddChainData(msg))
                 RelayChainData(msg);
             else
                 LogPrint("net", "received invalid chain data %s\n", msg.ToString());
@@ -4901,7 +4902,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                 CvnSigSignerType mapSigsBySigner = mapSigsByCreator[nNextCreator]; // it's OK to add an element here
 
                 for (uint32_t i = 0; i < vSigList.size() ; i++) {
-                    LogPrintf("nNextCreator: 0x%08x, prev: %s, %s\n", nNextCreator, hashPeersTip.ToString(), vSigList[i].ToString());
                     if (!mapSigsBySigner.count(vSigList[i].nSignerId)) {
                         if (!AddCvnSignature(vSigList[i], hashPeersTip, nNextCreator))
                             Misbehaving(pfrom->GetId(), 50);
@@ -5057,17 +5057,15 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     {
         std::vector<CBlockHeader> headers;
 
-        // Bypass the normal CBlock deserialization, as we don't want to risk deserializing 2000 full blocks.
+        // Bypass the normal CBlock deserialization, as we don't want to risk deserializing 'MAX_HEADERS_RESULTS' full blocks.
         unsigned int nCount = ReadCompactSize(vRecv);
         if (nCount > MAX_HEADERS_RESULTS) {
             Misbehaving(pfrom->GetId(), 20);
             return error("headers message size = %u", nCount);
         }
         headers.resize(nCount);
-        for (unsigned int n = 0; n < nCount; n++) {
+        for (unsigned int n = 0; n < nCount; n++)
             vRecv >> headers[n];
-            //ReadCompactSize(vRecv); // ignore tx count; assume it is 0.
-        }
 
         LOCK(cs_main);
 

@@ -11,6 +11,7 @@
 #include "net.h"
 #include "miner.h"
 #include "init.h"
+#include "cvn.h"
 
 #ifdef USE_OPENSC
 #include "smartcard.h"
@@ -20,7 +21,9 @@
 #include <stdio.h>
 #include <set>
 
-uint32_t nCvnNodeId = 0;
+#define POC_BLOCKS_TO_SCAN 200
+
+#define POC_DEBUG 0
 
 CCriticalSection cs_mapChainAdmins;
 ChainAdminMapType mapChainAdmins;
@@ -34,29 +37,23 @@ CvnSigMapType mapCvnSigs;
 CCriticalSection cs_mapChainData;
 ChainDataMapType mapChainData;
 
-bool static CvnSignWithKey(const uint256& hashUnsignedBlock, const std::string strCvnPrivKey, CCvnSignature& signature, const CCvnInfo& cvnInfo)
+typedef boost::unordered_set<uint32_t> TimeWeightSetType;
+typedef std::vector<uint32_t>::reverse_iterator CandidateIterator;
+
+bool static CvnSignWithKey(const uint256& hashUnsignedBlock, const CKey cvnPrivKey, CCvnSignature& signature, const CCvnInfo& cvnInfo)
 {
-    CBitcoinSecret secret;
-
-    if (!secret.SetString(strCvnPrivKey)) {
-        LogPrint("cvn", "CvnSignWithKey : private key is invalid\n");
+    if (cvnInfo.vPubKey != cvnPubKey) {
+        LogPrintf("CvnSignWithKey : key does not match node ID\n  CVN pubkey: %s\n CARD pubkey: %s\n", HexStr(cvnInfo.vPubKey), HexStr(cvnPubKey));
         return false;
     }
 
-    CKey key = secret.GetKey();
-
-    if (cvnInfo.vPubKey != key.GetPubKey()) {
-        LogPrint("cvn", "CvnSignWithKey : key does not match node ID\n");
-        return false;
-    }
-
-    if (!key.Sign(hashUnsignedBlock, signature.vSignature)) {
-        LogPrint("cvn", "CvnSignWithKey : could not create block signature\n");
+    if (!cvnPrivKey.Sign(hashUnsignedBlock, signature.vSignature)) {
+        LogPrintf("CvnSignWithKey : could not create block signature\n");
         return false;
     }
 
     if (!CvnVerifySignature(hashUnsignedBlock, signature)) {
-        LogPrint("cvn", "CvnSignWithKey : created invalid signature\n");
+        LogPrintf("CvnSignWithKey : created invalid signature\n");
         return false;
     }
 
@@ -81,10 +78,15 @@ static bool CvnSignHash(const uint256& hashToSign, CCvnSignature& signature, con
         return false;
     }
 
+    if (!mapArgs.count("-cvn")) {
+        LogPrintf("CvnSignHash : this node was not configured to run as CVN\n", nNodeId);
+        return false;
+    }
+
     signature.nSignerId = nNodeId;
     CCvnInfo cvnInfo = mapCVNs[nNodeId];
 
-    if (GetBoolArg("-usesmartcard", false)) {
+    if (GetArg("-cvn", "") == "card") {
 #ifdef USE_OPENSC
         if (!fSmartCardUnlocked) {
             LogPrint("cvn", "CvnSignHash : ERROR, smart card not unlocked. Make sure that -cvnpin, -cvnslot and -cvnkeyid are set correctly\n");
@@ -96,14 +98,7 @@ static bool CvnSignHash(const uint256& hashToSign, CCvnSignature& signature, con
         return false;
 #endif
     } else {
-        std::string strCvnPrivKey = GetArg("-cvnprivkey", "");
-
-        if (strCvnPrivKey.size() != 51) {
-            LogPrint("cvn", "CvnSignHash : ERROR, invalid private key supplied or -cvnprivkey is missing\n");
-            return false;
-        }
-
-        return CvnSignWithKey(hashToSign, strCvnPrivKey, signature, cvnInfo);
+        return CvnSignWithKey(hashToSign, cvnPrivKey, signature, cvnInfo);
     }
 
     return false;
@@ -315,7 +310,7 @@ void SendCVNSignature(const CBlockIndex *pindexNew, const bool fRelay)
     CCvnSignature signature;
     if (!CvnSign(pindexNew->GetBlockHash(), signature, nNextCreator, nCvnNodeId)) {
         LogPrintf("SendCVNSignature : could not create sig for 0x%08x by 0x%08x, hash %s\n",
-                nNextCreator, signature.nSignerId, hashPrevBlock.ToString());
+                nNextCreator, nCvnNodeId, hashPrevBlock.ToString());
         return;
     }
 
@@ -336,14 +331,14 @@ void SendCVNSignature(const CBlockIndex *pindexNew, const bool fRelay)
 void PrintAllCVNs()
 {
     BOOST_FOREACH(const CvnMapType::value_type& cvn, mapCVNs) {
-        LogPrintf("%s\n", cvn.second.ToString());
+        LogPrint("cvndata", "%s\n", cvn.second.ToString());
     }
 }
 
 void PrintAllChainAdmins()
 {
     BOOST_FOREACH(const ChainAdminMapType::value_type& adm, mapChainAdmins) {
-        LogPrintf("%s\n", adm.second.ToString());
+        LogPrint("cvndata", "%s\n", adm.second.ToString());
     }
 }
 
@@ -364,7 +359,7 @@ void UpdateCvnInfo(const CBlock* pblock)
         mapCVNs.insert(std::make_pair(cvnInfo.nNodeId, cvnInfo));
     }
 
-    //PrintAllCVNs();
+    PrintAllCVNs();
 }
 
 void UpdateChainAdmins(const CBlock* pblock)
@@ -384,7 +379,7 @@ void UpdateChainAdmins(const CBlock* pblock)
         mapChainAdmins.insert(std::make_pair(admin.nAdminId, admin));
     }
 
-    //PrintAllChainAdmins();
+    PrintAllChainAdmins();
 }
 
 bool CheckDynamicChainParameters(const CDynamicChainParams& params)
@@ -426,6 +421,8 @@ void UpdateChainParameters(const CBlock* pblock)
     dynParams.nMinSuccessiveSignatures   = pblock->dynamicChainParams.nMinSuccessiveSignatures;
 }
 
+static int64_t nTimeCheck = 0;
+static int64_t nTimeCreatorCheck = 0;
 bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params& params)
 {
     uint256 hashBlock = block.GetHash();
@@ -434,10 +431,14 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
     if (!block.vSignatures.size())
         return error("block %s has no signatures", hashBlock.ToString());
 
+    int64_t nTimeStart = GetTimeMicros();
     BOOST_FOREACH(CCvnSignature signature, block.vSignatures) {
         if (!CvnValidateSignature(signature, block.hashPrevBlock, block.nCreatorId))
             return error("signature is invalid: %s", signature.ToString());
     }
+
+    int64_t nTime1 = GetTimeMicros(); nTimeCheck += nTime1 - nTimeStart;
+    LogPrint("benchcvn", "    - signature checks: %.2fms [%.2fs]\n", 0.001 * (nTime1 - nTimeStart), nTimeCheck * 0.000001);
 
     if (!mapBlockIndex.count(block.hashPrevBlock)) {
         if (hashBlock != params.hashGenesisBlock)
@@ -450,6 +451,9 @@ bool CheckProofOfCooperation(const CBlockHeader& block, const Consensus::Params&
     uint32_t nBlockCreator = (hashBlock == params.hashGenesisBlock) ?
             block.nCreatorId :
             CheckNextBlockCreator(mapBlockIndex[block.hashPrevBlock], block.nTime);
+
+    int64_t nTime2 = GetTimeMicros(); nTimeCreatorCheck += nTime2 - nTime1;
+    LogPrint("benchcvn", "    - NextBlockCreator checks: %.2fms [%.2fs]\n", 0.001 * (nTime2 - nTime1), nTimeCreatorCheck * 0.000001);
 
     if (!nBlockCreator)
         return error("FATAL: can not determine block creator for %s", hashBlock.ToString());
@@ -502,8 +506,8 @@ static uint32_t FindNewlyAddedCVN(const CBlockIndex* pindexStart)
     // find the CVN that was added last
     for (const CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev) {
         if (pindex->nVersion & CBlock::CVN_PAYLOAD) {
-            CachedCvnType::iterator it = mapChachedCVNInfoBlocks.find(pindex->GetBlockHash());
             vector<CCvnInfo> vCvnInfoFromBlock;
+            CachedCvnType::iterator it = mapChachedCVNInfoBlocks.find(pindex->GetBlockHash());
 
             if (it == mapChachedCVNInfoBlocks.end()) {
                 CBlock block;
@@ -512,6 +516,7 @@ static uint32_t FindNewlyAddedCVN(const CBlockIndex* pindexStart)
                     return 0;
                 }
                 mapChachedCVNInfoBlocks[pindex->GetBlockHash()] = block.vCvns;
+                vCvnInfoFromBlock = block.vCvns;
             } else {
                 vCvnInfoFromBlock = it->second;
             }
@@ -545,6 +550,41 @@ static uint32_t FindNewlyAddedCVN(const CBlockIndex* pindexStart)
     return nLastAddedNode;
 }
 
+/* try to find a node that did not *create* a block with the
+ * last POC_BLOCKS_TO_SCAN blocks but recently successively *signed* the
+ * required number of last blocks. This node will then be chosen to create
+ * the next block
+ * */
+typedef std::map<uint32_t, uint32_t> map_t;
+static uint32_t FindDormantNode(const CBlockIndex* pindexStart, const map<uint32_t, uint32_t> &vLastSignatures, const TimeWeightSetType &setCreatorCandidates, const uint32_t &nMinSigs)
+{
+    set<uint32_t> setDormantNodes;
+    BOOST_FOREACH(const map_t::value_type &signer, vLastSignatures) {
+        if (!setCreatorCandidates.count(signer.first) && signer.second >= nMinSigs)
+            setDormantNodes.insert(signer.first);
+    }
+
+    if (setDormantNodes.empty())
+        return 0;
+
+    if (setDormantNodes.size() == 1)
+        return *setDormantNodes.begin();
+
+    /* here we have the unlikely case that there is more
+     * than one dormant node. The node with the highest time-weight
+     * will be chosen.
+     */
+    for (const CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev) {
+        if (setDormantNodes.count(pindex->nCreatorId)) {
+            setDormantNodes.erase(pindex->nCreatorId);
+            if (setDormantNodes.empty())
+                return pindex->nCreatorId;
+        }
+    }
+
+    return 0;
+}
+
 static uint32_t FindCandidateOffset(const uint64_t nPrevBlockTime, const int64_t nTimeToTest)
 {
     int nOverdue = nTimeToTest - nPrevBlockTime - dynParams.nBlockSpacing;
@@ -553,45 +593,6 @@ static uint32_t FindCandidateOffset(const uint64_t nPrevBlockTime, const int64_t
         return 0;
 
     return nOverdue / dynParams.nBlockSpacingGracePeriod;
-}
-
-typedef boost::unordered_set<uint32_t> TimeWeightSetType;
-typedef std::vector<uint32_t>::reverse_iterator CandidateIterator;
-
-static void AddToSigSets(std::vector<TimeWeightSetType>& vLastSignatures, const std::vector<CCvnSignature>& vSignatures)
-{
-    TimeWeightSetType signers;
-
-    BOOST_FOREACH(const CCvnSignature& sig, vSignatures) {
-        signers.insert(sig.nSignerId);
-    }
-
-    vLastSignatures.push_back(signers);
-}
-
-static bool HasSignedLastBlocks(const std::vector<TimeWeightSetType>& vLastSignatures, const uint32_t& nCreatorCandidate, const uint32_t& nMinSuccessiveSignatures)
-{
-    uint32_t nSignatures = 0;
-#if POC_DEBUG
-    LogPrintf("HasSignedLastBlocks : 0x%08x signed the last %u blocks?\n", nCreatorCandidate, nMinSuccessiveSignatures);
-#endif
-    BOOST_FOREACH(const TimeWeightSetType& signers, vLastSignatures) {
-        if (signers.count(nCreatorCandidate)) {
-            nSignatures++;
-        } else {
-            if (nSignatures < nMinSuccessiveSignatures) {
-#if POC_DEBUG
-                LogPrintf("HasSignedLastBlocks : NOPE\n");
-#endif
-                return false;
-            }
-        }
-    }
-
-#if POC_DEBUG
-    LogPrintf("HasSignedLastBlocks : %s\n", (nSignatures >= nMinSuccessiveSignatures ? "YES" : "NOPE"));
-#endif
-    return (nSignatures >= nMinSuccessiveSignatures);
 }
 
 #if 0
@@ -608,7 +609,7 @@ static const string CreateSignerIdList(const std::vector<CCvnSignature>& vSignat
 #endif
 
 /**
- * The rules are as follows:
+ * The rules are as follows: (THIS COMMENT NEEDS TO BE UPDATED)
  * 1. If there is any newly added CVN it is its turn
  * 1. Find the node with the highest time-weight. That's the
  *    node that created its last block the furthest in the past.
@@ -617,30 +618,51 @@ static const string CreateSignerIdList(const std::vector<CCvnSignature>& vSignat
  */
 uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTimeToTest)
 {
-    TimeWeightSetType sCheckedNodes;
-    sCheckedNodes.reserve(mapCVNs.size());
+    TimeWeightSetType setCreatorCandidates;
+    setCreatorCandidates.reserve(mapCVNs.size());
     vector<uint32_t> vCreatorCandidates;
-    vector<TimeWeightSetType> vLastSignatures;
+    map<uint32_t, uint32_t> mapLastSignatures; // key: signerId, value: # of sigs
     uint32_t nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures;
 
     // create a list of creator candidates
-    for (const CBlockIndex* pindex = pindexStart; pindex; pindex = pindex->pprev) {
-        if (sCheckedNodes.insert(pindex->nCreatorId).second)
+    // scan no more than the last 200 blocks
+    int nBlocksToScan = POC_BLOCKS_TO_SCAN;
+    size_t nRegisteredCVNs = mapCVNs.size();
+    for (const CBlockIndex* pindex = pindexStart; pindex && nBlocksToScan; pindex = pindex->pprev, nBlocksToScan--) {
+        if (!mapCVNs.count(pindex->nCreatorId))
+            continue; // ignore CVNs that were deactivated
+
+        // if the creator has not been considered yet add it to the list of candidates
+        if (setCreatorCandidates.insert(pindex->nCreatorId).second)
             vCreatorCandidates.push_back(pindex->nCreatorId);
 
-        if (nMinSuccessiveSignatures--)
-            AddToSigSets(vLastSignatures, pindex->vSignatures);
+        // record the number of signatures within the nMinSuccessiveSignatures range
+        if (nMinSuccessiveSignatures) {
+            nMinSuccessiveSignatures--;
+            BOOST_FOREACH(const CCvnSignature& sig, pindex->vSignatures) {
+                mapLastSignatures[sig.nSignerId]++;
+            }
+        }
+
+        if (vCreatorCandidates.size() == nRegisteredCVNs && !nMinSuccessiveSignatures)
+            break; // no more work to do
     }
-    nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures; // reset
 
     uint32_t nNextCreatorId = FindNewlyAddedCVN(pindexStart);
 
     if (nNextCreatorId) {
-        LogPrintf("CheckNextBlockCreator : CVN 0x%08x needs to be bootstrapped\n", nNextCreatorId);
+        LogPrintf("CheckNextBlockCreator : CVN 0x%08x (%u sigs) needs to be bootstrapped\n", nNextCreatorId, mapLastSignatures[nNextCreatorId]);
         vCreatorCandidates.push_back(nNextCreatorId);
+    } else if (vCreatorCandidates.size() < nRegisteredCVNs) {
+        nNextCreatorId = FindDormantNode(pindexStart, mapLastSignatures, setCreatorCandidates, dynParams.nMinSuccessiveSignatures);
+
+        if (nNextCreatorId) {
+            LogPrintf("CheckNextBlockCreator : dormant CVN 0x%08x (%u sigs) detected - activating...\n", nNextCreatorId, mapLastSignatures[nNextCreatorId]);
+            vCreatorCandidates.push_back(nNextCreatorId);
+        }
     }
 
-    // the last in the list has the highest time-weight
+    // the last entry in the list has the highest time-weight
     CandidateIterator itCandidates = vCreatorCandidates.rbegin();
 
     if (!vCreatorCandidates.size()) {
@@ -654,28 +676,14 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
         nCandidateOffset = vCreatorCandidates.size() - 1;
     }
 
-#if POC_DEBUG
-    LogPrintf("CheckNextBlockCreator : continue with candidate offset %u\n", nCandidateOffset);
-    uint32_t i =0;
-    BOOST_FOREACH(const TimeWeightSetType set, vLastSignatures) {
-        LogPrintf("set #%02u: ", i++);
-        bool fFirst = true;
-        BOOST_FOREACH(const uint32_t signerId, set) {
-            LogPrintf("%s0x%08x", fFirst ? "" : ", ", signerId);
-            if (fFirst)
-                fFirst = false;
-        }
-        LogPrintf("\n");
-    }
-#endif
-
     itCandidates += nCandidateOffset;
+    nMinSuccessiveSignatures = dynParams.nMinSuccessiveSignatures; // reset
     uint32_t maxLoop = 1100;
     do {
         uint32_t nCreatorCandidate = *(itCandidates ++);
 
         // check if the candidate signed the last nMinSuccessiveSignatures blocks
-        if (HasSignedLastBlocks(vLastSignatures, nCreatorCandidate, nMinSuccessiveSignatures)) {
+        if (mapLastSignatures[nCreatorCandidate] >= nMinSuccessiveSignatures) {
             nNextCreatorId = nCreatorCandidate;
             break;
         }
@@ -688,7 +696,7 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
             nMinSuccessiveSignatures--;
             LogPrintf("CheckNextBlockCreator: WARNING, could not find a CVN that signed enough successive blocks. Lowering number of required sigs to %u\n", nMinSuccessiveSignatures);
         }
-    } while(nMinSuccessiveSignatures && maxLoop--);
+    } while (nMinSuccessiveSignatures && maxLoop--);
 
     if (!maxLoop)
         LogPrintf("WARN: infinite loop detected. Aborted...\n");
@@ -696,7 +704,7 @@ uint32_t CheckNextBlockCreator(const CBlockIndex* pindexStart, const int64_t nTi
     if (nNextCreatorId)
         LogPrint("cvn", "NODE ID 0x%08x should create the next block #%u\n", nNextCreatorId, pindexStart->nHeight + 1);
     else
-        LogPrintf("ERROR, could not find any Node ID that should create the next block #%u\n", pindexStart->nHeight + 1);
+        LogPrintf("ERROR, could not find any node ID that should create the next block #%u\n", pindexStart->nHeight + 1);
 
     return nNextCreatorId;
 }

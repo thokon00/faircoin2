@@ -36,6 +36,7 @@
 #include "utilstrencodings.h"
 #include "validationinterface.h"
 #include "poc.h"
+#include "cvn.h"
 #include "base58.h"
 #ifdef ENABLE_WALLET
 #include "wallet/db.h"
@@ -1043,7 +1044,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         fEnableReplacement = (std::find(vstrReplacementModes.begin(), vstrReplacementModes.end(), "fee") != vstrReplacementModes.end());
     }
 
-    // ********************************************************* Step 4: application initialization: dir lock, daemonize, pidfile, debug log, smartcard
+    // ********************************************************* Step 4: application initialization: dir lock, daemonize, pidfile, debug log, CVN
 
     // Initialize elliptic curve code
     ECC_Start();
@@ -1120,13 +1121,45 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             return InitError(_("Unable to start HTTP server. See debug log for details."));
     }
 
+    if (mapArgs.count("-cvn")) {
+        X509 *x509CVNCertificate = NULL;
+        if (GetArg("-cvn", "") == "card") {
 #ifdef USE_OPENSC
-    if (GetBoolArg("-usesmartcard", false)) {
-        LogPrintf("Initializing smartcard\n");
-        uiInterface.InitMessage(_("Initializing smartcard..."));
-        InitSmartCard();
-    }
+            LogPrintf("Initializing smartcard\n");
+            uiInterface.InitMessage(_("Initializing smartcard..."));
+            x509CVNCertificate = InitCVNWithSmartCard();
+#else
+            LogPrintf("ERROR: invalid parameter -cvn=card. This wallet version was not compiled with smart card support\n");
 #endif
+        } else if (GetArg("-cvn", "") == "file") {
+            x509CVNCertificate = InitCVNWithCertificate();
+        } else
+            return InitError("-cvn configuration invalid. Parameter must be 'card' or 'file'\n");
+
+        if (!x509CVNCertificate)
+            return InitError("could not find a vaild CVN node certificate\n");
+
+        nCvnNodeId = SetupCVN(x509CVNCertificate);
+
+        if (!nCvnNodeId)
+            return InitError("could not find a vaild CVN node ID\n");
+
+        LogPrintf("Starting CVN node with ID 0x%08x\n", nCvnNodeId);
+        uiInterface.InitMessage(_("Starting CVN node..."));
+
+#if 0
+        CBlock genesis = chainparams.GenesisBlock();
+        UpdateCvnInfo(&genesis);
+        UpdateChainAdmins(&genesis);
+
+        CCvnSignature blockSig;
+        CvnSign(genesis.hashPrevBlock, blockSig, GENESIS_NODE_ID, GENESIS_NODE_ID);
+        LogPrintf("Genesis PoC signature: %s\n", HexStr(blockSig.vSignature));
+
+        CvnSignBlock(genesis);
+        LogPrintf("Genesis block signature: %s\n", HexStr(genesis.vCreatorSignature));
+#endif
+    }
 
     int64_t nStart;
 
@@ -1149,41 +1182,6 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 
     } // (!fDisableWallet)
 #endif // ENABLE_WALLET
-
-    if (mapArgs.count("-cvnnodeid")) {
-        std::stringstream ss;
-        ss << std::hex << GetArg("-cvnnodeid", "0x00");
-        ss >> nCvnNodeId;
-
-        if (!nCvnNodeId)
-            return InitError("invalid CVN node ID supplied\n");
-
-        LogPrintf("Starting CVN node with ID 0x%08x\n", nCvnNodeId);
-        uiInterface.InitMessage(_("Starting CVN node..."));
-
-        // we validate the private key if no smart card is used
-        if (!GetBoolArg("-usesmartcard", false)) {
-            std::string strCvnPrivKey = GetArg("-cvnprivkey", "");
-
-            CBitcoinSecret testSecret;
-            if (!testSecret.SetString(strCvnPrivKey)) {
-                nCvnNodeId = 0;
-                return InitError("invalid CVN private key supplied\n");
-            }
-        }
-#if 1
-        CBlock genesis = chainparams.GenesisBlock();
-        UpdateCvnInfo(&genesis);
-        UpdateChainAdmins(&genesis);
-
-        CCvnSignature blockSig;
-        CvnSign(genesis.hashPrevBlock, blockSig, GENESIS_NODE_ID, GENESIS_NODE_ID);
-        LogPrintf("Genesis PoC signature: %s\n", HexStr(blockSig.vSignature));
-
-        CvnSignBlock(genesis);
-        LogPrintf("Genesis block signature: %s\n", HexStr(genesis.vCreatorSignature));
-#endif
-    }
 
     // ********************************************************* Step 6: network initialization
 

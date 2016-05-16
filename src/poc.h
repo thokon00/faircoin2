@@ -30,9 +30,7 @@ typedef std::map<uint256, CChainDataMsg> ChainDataMapType;
 #define MIN_DUST_THRESHOLD 1000
 
 #define __DBG_ LogPrintf("DEBUG: In file %s in function %s in line %d\n", __FILE__, __func__, __LINE__);
-#define POC_DEBUG 0
 
-extern uint32_t nCvnNodeId;
 extern CCriticalSection cs_mapCVNs;
 extern CvnMapType mapCVNs;
 extern CCriticalSection cs_mapChainAdmins;

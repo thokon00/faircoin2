@@ -611,7 +611,7 @@ UniValue removecvn(const UniValue& params, bool fHelp)
              "}\n"
             "\nExamples:\n"
             "\nRemove a CVN\n"
-            + HelpExampleCli("removecvn", "c 0x123488 1461056246 [\"0x87654321:a1b5..9093\",\"0x3453:0432..12aa\"]")
+            + HelpExampleCli("removecvn", "c 0x123488 [\"0x87654321:a1b5..9093\",\"0x3453:0432..12aa\"]")
         );
 
     LOCK(cs_main);
@@ -661,6 +661,10 @@ UniValue removecvn(const UniValue& params, bool fHelp)
 
     if (IsInitialBlockDownload())
         return "wait for block chain download to finish";
+
+    // if no signatures are supplied we print out the CChainDataMsg's hash to sign
+    if (!sigs.size())
+        return msg.GetHash().ToString();
 
     AddAdminSignatures(msg, sigs);
     LogPrintf("about remove %s 0x%08x from the network\n", fRemoveCvn ? "CVN" : "Admin", nNodeId);;
